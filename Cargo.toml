@@ -1,0 +1,44 @@
+[package]
+authors = ["Aberic <aberic@qq.com>"]
+name = "starry"
+version = "0.1.0"
+license = "Apache-2.0"
+description = "http & server/client library"
+repository = "https://github.com/aberic/starry"
+readme = "README.md"
+keywords = ["http", "http-server", "http-client"]
+edition = "2018"
+#autotests = false
+#autobenches = false
+
+[dependencies.log]
+version = "0"
+
+[dependencies.log4rs]
+version = "1"
+
+[dependencies.lazy_static]
+version = "1"
+
+[dependencies.once_cell]
+version = "1"
+
+[dependencies.openssl]
+version = "0"
+features = ["vendored"]
+
+[dependencies.hex]
+version = "0"
+
+[dependencies.chrono]
+version = "0"
+
+[dependencies.crossbeam]
+version = "0"
+
+[dependencies.num_cpus]
+version = "1"
+
+[dependencies.bytes]
+version = "1"
+features = ["serde"]

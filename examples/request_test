@@ -1,0 +1,56 @@
+POST /?key=value&key2=value2 HTTP/1.1
+Test: content
+User-Agent: PostmanRuntime/7.28.4
+Accept: */*
+Postman-Token: 3627e7ee-085b-4c76-a7e8-2ab789b01da8
+Host: localhost:7878
+Accept-Encoding: gzip, deflate, br
+Connection: keep-alive
+Cookie: Cookie_1=value1; Cookie_2=value2
+Cookie: Cookie_3=value3; Cookie_4=value4
+Content-Type: multipart/form-data; boundary=--------------------------928695049288495294588005
+Authorization: Basic dXNlcjpwYXNzd29yZA==
+Content-Length: 728
+
+----------------------------928695049288495294588005
+Content-Disposition: form-data; name="1"
+
+2
+3
+----------------------------928695049288495294588005
+Content-Disposition: form-data; name="4"; filename="test2.txt"
+Content-Type: text/plain
+
+test1
+test2
+
+test3
+test4
+
+test5
+
+
+
+----------------------------928695049288495294588005
+Content-Disposition: form-data; name="7"
+
+5
+----------------------------928695049288495294588005
+Content-Disposition: form-data; name="10"; filename="test2.txt"
+Content-Type: text/plain
+
+test1
+test2
+
+test3
+test4
+
+test5
+
+
+
+----------------------------928695049288495294588005
+Content-Disposition: form-data; name="13"
+
+14
+----------------------------928695049288495294588005--

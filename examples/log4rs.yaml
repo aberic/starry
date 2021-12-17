@@ -1,0 +1,51 @@
+# 配置说明
+# refresh_rate 每30秒扫描此文件以查找更改
+#  1、appenders 输出到什么地方
+#    a) kind：指定类型
+#      console：控制台
+#      file：普通的日志文件
+#      rolling_file：可以分割处理的日志文件
+#    b) path：指定文件路径
+#    c) append: bool类型，是否拼接到文件尾部
+#    d) encoder：指定日志的输出格式，默认为kind: pattern
+#      json：json格式输出
+#      pattern：模式输出，如{d} [{t}] {l} {M}:{m}{n}
+#      writer
+#    e) policy：日志分割处理的策略
+#      compound：复合策略，多个策略规则
+#      trigger：触发策略 kind: size和limit: 1024，按照文件大小，限制1024字节
+#      roller：分割策略delete，超过1024字节，处理方式是删除，也可以使用fixed_window压缩存储
+#
+#  2、root
+#    a) level 默认日志记录级别
+#    b) appenders 将“stdout”appender附加到根目录
+
+refresh_rate: 30 seconds
+appenders:
+  stdout:
+    kind: console
+    encoder:
+      pattern: "{d(%+)(local)} {l} {t} {m}{n}"
+  debug:
+    kind: rolling_file # 或 rolling_file
+    path: "log/debug.log" # log 文件路径
+    append: true # 追加模式, 即每次在已有文件末尾添加日志, 默认为 true
+    encoder:
+      kind: json
+    policy:
+      kind: compound # 默认值, 即使用所有 policy
+      trigger: # 当文件超过10mb 时触发 rotate
+        kind: size
+        limit: 100mb
+      roller: # rotate 类型
+        # kind: delete # 直接原有文件
+        # 或者用 fixed_window
+        kind: fixed_window
+        pattern: "debug-log-{}.log" # 注意, 需要至少包含 "{}" 用于插入索引值
+        base: 0 # 压缩日志索引值起点
+        count: 2 # 最大保存压缩文件数
+root:
+  level: debug
+  appenders:
+    - stdout
+    - debug
