@@ -16,6 +16,7 @@ use std::collections::HashMap;
 
 use crate::Method;
 use crate::server::router::{Filter, Handler};
+use std::fmt::{Debug, Formatter};
 
 #[derive(Clone, Debug)]
 pub(crate) struct Root {
@@ -97,7 +98,7 @@ impl Root {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub(crate) struct Node {
     /// 资源样式，如`/a/b/:c/d/:e/:f/g`
     pattern: Option<String>,
@@ -107,7 +108,7 @@ pub(crate) struct Node {
     /// 待实现接收请求方法
     pub(crate) handler: Option<Handler>,
     /// 过滤器/拦截器数组
-    filters: Option<Vec<Filter>>,
+    pub(crate) filters: Option<Vec<Filter>>,
     pub(crate) next_nodes: Vec<Node>,
 }
 
@@ -297,6 +298,21 @@ impl Node {
     }
 }
 
+impl Debug for Node {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "pattern: {:#?}, \npattern_piece: {}, \npattern_piece_value: {:#?}, \nhandler: {:#?}\
+        , \nnext_nodes: {:#?}"
+               , self.pattern, self.pattern_piece, self.pattern_piece_value, self.handler,
+               self.next_nodes)
+    }
+}
+
+// pattern: Option<String>,
+// pattern_piece: String,
+// pattern_piece_value: Option<String>,
+// pub(crate) handler: Option<Handler>,
+// pub(crate) filters: Option<Vec<Filter>>,
+// pub(crate) next_nodes: Vec<Node>,
 
 #[cfg(test)]
 mod node_test {
@@ -400,10 +416,10 @@ mod node_test {
         assert_eq!(n1.handler, root.root_put.next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0].handler);
     }
 
-    fn h1(_context: Context) {}
+    fn h1(_context: Box<Context>) {}
 
-    fn h2(_context: Context) {}
+    fn h2(_context: Box<Context>) {}
 
-    fn h3(_context: Context) {}
+    fn h3(_context: Box<Context>) {}
 }
 

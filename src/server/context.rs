@@ -26,6 +26,8 @@ pub struct Context {
     request: Request,
     response: Response,
     fields: HashMap<String, String>,
+    /// 是否已经执行过response方法
+    pub(crate) executed: bool,
 }
 
 /// request相关
@@ -33,7 +35,7 @@ impl Context {
     pub(crate) fn new(request: Request, fields: HashMap<String, String>) -> Self {
         let version = request.version();
         let connection = !request.close;
-        Context { request, response: Response::new(version, connection), fields }
+        Context { request, response: Response::new(version, connection), fields, executed: false }
     }
 
     // pub fn get_request(&self) -> StarryResult<Request> {
@@ -51,15 +53,15 @@ impl Context {
         self.request.header_get(k)
     }
 
-    pub fn userinfo(&self) -> Option<Userinfo> {
+    pub fn req_userinfo(&self) -> Option<Userinfo> {
         self.request.url.authority.userinfo()
     }
 
-    pub fn path(&self) -> String {
+    pub fn req_path(&self) -> String {
         self.request.url.location.path()
     }
 
-    pub fn client_addr(&self) -> Addr {
+    pub fn req_client_addr(&self) -> Addr {
         self.request.url.authority.addr()
     }
 
@@ -73,7 +75,7 @@ impl Context {
     /// Connection: Upgrade
     /// Upgrade: websocket
     /// ```
-    pub fn is_web_socket(&self) -> bool {
+    pub fn req_is_web_socket(&self) -> bool {
         match self.req_header_get("Connection") {
             Some(src) => if src.ne("upgrade") {
                 return false;
@@ -98,7 +100,7 @@ impl Context {
     }
 
     /// 返回对应于请求表单中定义参数值的引用。
-    pub fn get_form_value<K: ?Sized>(&mut self, k: &K) -> StarryResult<Option<String>> where
+    pub fn req_form<K: ?Sized>(&mut self, k: &K) -> StarryResult<Option<String>> where
         K: Borrow<K>,
         K: Hash + Eq,
         String: Borrow<K>, {
@@ -109,7 +111,7 @@ impl Context {
     }
 
     /// 返回对应于请求表单中定义的参数存在性。
-    pub fn have_form_value<K: ?Sized>(&mut self, k: &K) -> StarryResult<bool> where
+    pub fn req_have_form<K: ?Sized>(&mut self, k: &K) -> StarryResult<bool> where
         K: Borrow<K>,
         K: Hash + Eq,
         String: Borrow<K>, {
@@ -120,12 +122,12 @@ impl Context {
     }
 
     /// 请求表单中定义的参数数量
-    pub fn count_form_values(&mut self) -> StarryResult<usize> {
+    pub fn req_count_form(&mut self) -> StarryResult<usize> {
         Ok(self.request.form()?.len())
     }
 
     /// 返回对应于URI请求参数中定义参数值的引用。
-    pub fn get_param_value<K: ?Sized>(&self, k: &K) -> Option<String> where
+    pub fn req_param<K: ?Sized>(&self, k: &K) -> Option<String> where
         K: Borrow<K>,
         K: Hash + Eq,
         String: Borrow<K>, {
@@ -136,7 +138,7 @@ impl Context {
     }
 
     /// 返回对应于URI请求参数中定义的参数存在性。
-    pub fn have_param_value<K: ?Sized>(&self, k: &K) -> bool where
+    pub fn req_have_param<K: ?Sized>(&self, k: &K) -> bool where
         K: Borrow<K>,
         K: Hash + Eq,
         String: Borrow<K>, {
@@ -147,13 +149,13 @@ impl Context {
     }
 
     /// URI请求参数中定义的参数数量
-    pub fn count_param_values(&self) -> usize {
+    pub fn req_count_param(&self) -> usize {
         self.request.form_param.len()
     }
 
     /// 返回对应于URI资源路径中定义参数值的引用。
     /// 键可以是映射的键类型的任何借用形式，但是借用形式上的Hash和Eq必须与键类型匹配。
-    pub fn get_field<K: ?Sized>(&self, k: &K) -> Option<String> where
+    pub fn req_field<K: ?Sized>(&self, k: &K) -> Option<String> where
         K: Borrow<K>,
         K: Hash + Eq,
         String: Borrow<K>, {
@@ -164,7 +166,7 @@ impl Context {
     }
 
     /// 返回对应于URI资源路径中定义的参数存在性。
-    pub fn have_field<K: ?Sized>(&self, k: &K) -> bool where
+    pub fn req_have_field<K: ?Sized>(&self, k: &K) -> bool where
         K: Borrow<K>,
         K: Hash + Eq,
         String: Borrow<K>, {
@@ -175,12 +177,12 @@ impl Context {
     }
 
     /// URI资源路径中定义的参数数量
-    pub fn count_fields(&self) -> usize {
+    pub fn req_count_fields(&self) -> usize {
         self.fields.len()
     }
 
     /// 返回对应于请求表单中定义参数对应附件的引用。
-    pub fn get_form_file<K: ?Sized>(&mut self, k: &K) -> StarryResult<Option<FileHeader>> where
+    pub fn req_form_file<K: ?Sized>(&mut self, k: &K) -> StarryResult<Option<FileHeader>> where
         K: Borrow<K>,
         K: Hash + Eq,
         String: Borrow<K>, {
@@ -210,7 +212,7 @@ impl Context {
         self.response.set_header_str(k, v)
     }
 
-    pub fn resp_add_set_cookie(&mut self, cookie: Cookie) {
+    pub fn resp_add_cookie(&mut self, cookie: Cookie) {
         self.response.add_set_cookie(cookie)
     }
 
@@ -226,15 +228,24 @@ impl Context {
         self.response.set_content_type(src)
     }
 
-    pub fn resp_set_body(&mut self, body: Vec<u8>) {
+    pub fn resp_body(&mut self, body: Vec<u8>) {
         self.response.write(body)
     }
 
-    pub fn resp_set_body_bytes(&mut self, body: &'static [u8]) {
-        self.response.write_bytes(body)
+    pub fn resp_body_slice(&mut self, body: &'static [u8]) {
+        self.response.write_slice(body)
+    }
+
+    pub fn resp_bodies(&mut self, body: Vec<u8>, content_type: ContentType) {
+        self.response.write_type(body, content_type)
+    }
+
+    pub fn resp_body_slices(&mut self, body: &'static [u8], content_type: ContentType) {
+        self.response.write_slice_type(body, content_type)
     }
 
     pub fn response(&mut self) -> StarryResult<()> {
+        self.executed = true;
         self.request.response(self.response.clone())
     }
 }

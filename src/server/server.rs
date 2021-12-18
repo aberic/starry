@@ -23,10 +23,12 @@ use crate::server::Router;
 use crate::utils::concurrent::ThreadPool;
 use crate::utils::errors::StarryResult;
 use crate::utils::log::LogModule;
+use crate::server::router::Filter;
 
 #[derive(Debug, Clone)]
 pub struct HttpServer {
     /// 设置线程池的大小
+    ///
     /// 线程池的大小是生成的工作线程的数量。默认情况下，等于CPU核数
     pool_size: usize,
     /// 日志策略
@@ -39,8 +41,24 @@ impl HttpServer {
         HttpServer { pool_size: 0, module: None, root: Arc::new(RwLock::new(Root::new())) }
     }
 
+    /// 创建路由组
+    /// 路由组尽量不要做成动态参数，会容易对下级数据进行拦截
+    ///
+    /// * pattern 资源样式，如`/a/b`
     pub fn router(&self, pattern: &str) -> Router {
         Router::new(pattern.to_string(), self.root.clone())
+    }
+
+    /// 创建路由组
+    ///
+    /// 路由组尽量不要做成动态参数，会容易对下级数据进行拦截
+    ///
+    /// 过滤操作尽量不要对数据体里的信息进行校验之类的流程，最好是对path、header和cookie进行过滤
+    ///
+    /// * pattern 资源样式，如`/a/b`
+    /// * filters 过滤器/拦截器数组
+    pub fn router_wf(&self, pattern: &str, filters: Vec<Filter>) -> Router {
+        Router::new_wf(pattern.to_string(), filters, self.root.clone())
     }
 
     pub fn set_pool_size(&mut self, pool_size: usize) {
@@ -89,6 +107,7 @@ impl HttpServer {
     }
 
     /// 创建一个新的HttpListener，它将被绑定到指定的端口。
+    ///
     /// 返回的侦听器已准备好接受连接。
     /// 绑定端口号为0将请求操作系统为该侦听器分配一个端口。分配的端口可以通过[`context::local_addr`]方法查询。
     /// 地址类型可以是[`ToSocketAddrs`] trait的任何实现。具体示例请参阅其文档
@@ -127,9 +146,19 @@ fn handle_connection(tcp_stream: TcpStream, root: Arc<RwLock<Root>>) {
         // request分预解析和解析两个过程，预解析用于判断请求有效性，如无效，则放弃后续解析操作
         Ok((request, node, fields)) => {
             log::debug!("method = {}, path = {}, from = {}", request.method(), request.path(), request.client());
-            let context = Context::new(request, fields);
+            let mut context = Box::new(Context::new(request, fields));
             log::trace!("context = {:#?}", context);
-            node.handler()(context)
+            match node.filters {
+                Some(ref src) => {
+                    for filter in src {
+                        filter(context.as_mut())
+                    }
+                },
+                None => {},
+            }
+            if !context.executed {
+                node.handler()(context)
+            }
         }
         Err(err) => log::info!("request from error, {}", err.to_string())
     }
@@ -153,8 +182,8 @@ mod server_test {
     fn server_test_single() {
         let server = HttpServer::new();
         let router = server.router("/m/n");
-        router.get("/test1/:a/c/d/:b", h1, vec![]);
-        router.get("/a/c/d/:b", h2, vec![]);
+        router.get("/test1/:a/c/d/:b", h1);
+        router.get("/a/c/d/:b", h2);
 
         // println!("server = {:#?}", server);
         // println!("router = {:#?}", router1);
@@ -190,23 +219,23 @@ mod server_test {
 
     fn router1(server: HttpServer) {
         let router1 = server.router("/m/n");
-        router1.get("/test1/:a/c", h3, vec![]);
-        router1.get("/a/c", h4, vec![]);
+        router1.get("/test1/:a/c", h3);
+        router1.get("/a/c", h4);
     }
 
     fn router2(server: HttpServer) {
         let router2 = server.router("/x/y");
-        router2.get("/test1/:a/c/d/:b", h1, vec![]);
-        router2.get("/a/c/d/:b", h2, vec![]);
+        router2.get("/test1/:a/c/d/:b", h1);
+        router2.get("/a/c/d/:b", h2);
     }
 
-    fn h1(_context: Context) {}
+    fn h1(_context: Box<Context>) {}
 
-    fn h2(_context: Context) {}
+    fn h2(_context: Box<Context>) {}
 
-    fn h3(_context: Context) {}
+    fn h3(_context: Box<Context>) {}
 
-    fn h4(_context: Context) {}
+    fn h4(_context: Box<Context>) {}
 }
 
 

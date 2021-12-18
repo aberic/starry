@@ -88,7 +88,7 @@ impl Response {
         self.body.write(body)
     }
 
-    pub fn write_bytes(&mut self, body: &'static [u8]) {
+    pub fn write_slice(&mut self, body: &'static [u8]) {
         self.content_length = body.len();
         self.header.set_content_length(self.content_length);
         self.header.set_content_type(ContentType::TEXT_PLAIN);
@@ -102,7 +102,7 @@ impl Response {
         self.body.write(body)
     }
 
-    pub fn write_bytes_type(&mut self, body: &'static [u8], content_type: ContentType) {
+    pub fn write_slice_type(&mut self, body: &'static [u8], content_type: ContentType) {
         self.content_length = body.len();
         self.header.set_content_length(self.content_length);
         self.header.set_content_type(content_type);
