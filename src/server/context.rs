@@ -244,8 +244,11 @@ impl Context {
         self.response.write_slice_type(body, content_type)
     }
 
-    pub fn response(&mut self) -> StarryResult<()> {
+    pub fn response(&mut self) {
         self.executed = true;
-        self.request.response(self.response.clone())
+        match self.request.response(self.response.clone()) {
+            Ok(()) => {},
+            Err(err) => log::error!("response failed! {}", err)
+        }
     }
 }

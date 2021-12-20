@@ -14,6 +14,7 @@
 
 use std::thread;
 use std::thread::JoinHandle;
+use std::time::Duration;
 
 use crate::utils::errors::{Errs, StarryResult};
 
@@ -21,10 +22,10 @@ pub struct Thread;
 
 impl Thread {
     pub fn spawn<F, T>(f: F) -> StarryResult<JoinHandle<T>>
-    where
-        F: FnOnce() -> T,
-        F: Send + 'static,
-        T: Send + 'static,
+        where
+            F: FnOnce() -> T,
+            F: Send + 'static,
+            T: Send + 'static,
     {
         let thread_builder = thread::Builder::new();
         match thread_builder.spawn(f) {
@@ -34,10 +35,10 @@ impl Thread {
     }
 
     pub fn spawn_on_name<F, T>(name: String, f: F) -> StarryResult<JoinHandle<T>>
-    where
-        F: FnOnce() -> T,
-        F: Send + 'static,
-        T: Send + 'static,
+        where
+            F: FnOnce() -> T,
+            F: Send + 'static,
+            T: Send + 'static,
     {
         let mut thread_builder = thread::Builder::new();
         thread_builder = thread_builder.name(name);
@@ -52,10 +53,10 @@ impl Thread {
         stack_size: usize,
         f: F,
     ) -> StarryResult<JoinHandle<T>>
-    where
-        F: FnOnce() -> T,
-        F: Send + 'static,
-        T: Send + 'static,
+        where
+            F: FnOnce() -> T,
+            F: Send + 'static,
+            T: Send + 'static,
     {
         let mut thread_builder = thread::Builder::new();
         thread_builder = thread_builder.name(name);
@@ -67,6 +68,10 @@ impl Thread {
             Err(err) => Err(Errs::strs("thread create error!", err)),
         }
     }
+
+    pub fn sleep(duration: Duration) {
+        thread::sleep(duration);
+    }
 }
 
 
@@ -74,6 +79,7 @@ impl Thread {
 mod thread_test {
     use std::thread;
     use std::time::Duration;
+
     use crate::utils::concurrent::Thread;
 
     fn spawn1() {
@@ -95,7 +101,7 @@ mod thread_test {
     #[test]
     fn test1() {
         Thread::spawn(spawn1).unwrap();
-        thread::sleep(Duration::from_secs(1));
+        Thread::sleep(Duration::from_secs(1));
     }
 
     #[test]

@@ -25,7 +25,9 @@ pub use http::values::MultipartValues;
 pub use http::values::Values;
 pub use http::version::Version;
 pub use server::Context;
+pub use server::Extend;
 pub use server::HttpServer;
+pub use server::limit::Limit;
 
 mod server;
 mod http;

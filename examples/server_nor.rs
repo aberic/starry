@@ -15,7 +15,8 @@
 // use std::io::{Read, Write};
 // use std::net::{TcpListener, TcpStream};
 
-use starry::{Context, Cookie, HttpServer, Status};
+use starry::{Context, Cookie, HttpServer, Limit, Status};
+use starry::Extend;
 
 fn main() {
     let server = HttpServer::new();
@@ -26,23 +27,38 @@ fn main() {
 }
 
 fn router1(server: HttpServer) {
-    let router = server.router_wf("/path/test", vec![f11, f12]);
-    router.get_wf("/test1/:a/:b", h11, vec![f13]);
-    router.get("/test1/:a/c/:b", h12);
-    router.get("/test1/:a/c/d/:b", h13);
+    let router = server.router_wf("/path/test", Extend::e1(vec![f11, f12]));
+    // 过滤过程 f13 f11 f12
+    router.get_wf("/test1/:a/:b", h11, Extend::e1(vec![f13]));
+    // 过滤过程 f14 f11 f12
+    router.get_wf("/test1/:a/c/:b", h12, Extend::e1(vec![f14]));
+    router.get_wf("/test1/:a/c/d/:b", h13, Extend::e1(vec![f15]));
+    router.get_wf("/test1/:a/c/d/e/:b", h13, Extend::e3(vec![f15], Limit::new(1000, 10, 300)));
+    router.get("/test1/:a/c/d/e/f/:b", h13);
     router.get("/test1/a/c/d/:b", h14);
 }
 
-fn f11(context: &Context) {
+fn f11(context: &mut Context) {
+    context.resp_status(Status::OK);
     println!("f11 path = {}", context.req_path());
 }
 
-fn f12(context: &Context) {
+fn f12(context: &mut Context) {
     println!("f12 path = {}", context.req_path());
 }
 
-fn f13(context: &Context) {
+fn f13(context: &mut Context) {
     println!("f13 path = {}", context.req_path());
+}
+
+fn f14(context: &mut Context) {
+    println!("f14 path = {}", context.req_path());
+}
+
+fn f15(context: &mut Context) {
+    println!("f15 path = {}", context.req_path());
+    context.resp_status(Status::OK);
+    context.response()
 }
 
 fn h11(mut context: Box<Context>) {
@@ -56,7 +72,7 @@ fn h11(mut context: Box<Context>) {
     println!("h11");
     println!("a = {}", context.req_field("a").unwrap());
     println!("b = {}", context.req_field("b").unwrap());
-    context.response().unwrap();
+    context.response();
 }
 
 fn h12(mut context: Box<Context>) {
@@ -64,7 +80,7 @@ fn h12(mut context: Box<Context>) {
     println!("h12");
     println!("a = {}", context.req_field("a").unwrap());
     println!("b = {}", context.req_field("b").unwrap());
-    context.response().unwrap();
+    context.response();
 }
 
 fn h13(mut context: Box<Context>) {
@@ -72,7 +88,7 @@ fn h13(mut context: Box<Context>) {
     println!("h13");
     println!("a = {}", context.req_field("a").unwrap());
     println!("b = {}", context.req_field("b").unwrap());
-    context.response().unwrap();
+    context.response();
 }
 
 // 该方法永远不会执行，被h13拦截了
@@ -80,7 +96,7 @@ fn h14(mut context: Box<Context>) {
     context.resp_status(Status::LENGTH_REQUIRED);
     println!("h14");
     println!("b = {}", context.req_field("b").unwrap());
-    context.response().unwrap();
+    context.response();
 }
 
 fn router2(server: HttpServer) {
@@ -99,7 +115,7 @@ fn h21(mut context: Box<Context>) {
     println!("1 = {:#?}", context.req_form("1").unwrap());
     println!("4 = {:#?}", context.req_form_file("4").unwrap());
     println!("10 = {:#?}", context.req_form_file("10").unwrap());
-    context.response().unwrap();
+    context.response();
 }
 
 fn h22(mut context: Box<Context>) {
@@ -107,7 +123,7 @@ fn h22(mut context: Box<Context>) {
     println!("h12");
     println!("a = {}", context.req_field("a").unwrap());
     println!("b = {}", context.req_field("b").unwrap());
-    context.response().unwrap();
+    context.response();
 }
 
 fn h23(mut context: Box<Context>) {
@@ -115,7 +131,7 @@ fn h23(mut context: Box<Context>) {
     println!("h13");
     println!("a = {}", context.req_field("a").unwrap());
     println!("b = {}", context.req_field("b").unwrap());
-    context.response().unwrap();
+    context.response();
 }
 
 // 该方法永远不会执行，被h23拦截了
@@ -123,5 +139,5 @@ fn h24(mut context: Box<Context>) {
     context.resp_status(Status::LENGTH_REQUIRED);
     println!("h14");
     println!("b = {}", context.req_field("b").unwrap());
-    context.response().unwrap();
+    context.response();
 }

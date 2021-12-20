@@ -13,10 +13,12 @@
  */
 
 use std::collections::HashMap;
+use std::fmt::Debug;
 
 use crate::Method;
-use crate::server::router::{Filter, Handler};
-use std::fmt::{Debug, Formatter};
+use crate::server::Extend;
+use crate::server::router::Handler;
+use crate::utils::concurrent::Thread;
 
 #[derive(Clone, Debug)]
 pub(crate) struct Root {
@@ -58,21 +60,20 @@ impl Root {
     /// * method 请求方法
     /// * handler 待实现接收请求方法
     /// * filters 过滤器/拦截器数组
-    pub(crate) fn add(&mut self, pattern: String, method: Method, handler: Handler,
-                      filters: Vec<Filter>) {
+    pub(crate) fn add(&mut self, pattern: String, method: Method, handler: Handler, extend: Option<Extend>) {
         match method {
-            Method::OPTIONS => self.root_option.add(pattern, method, handler, filters),
-            Method::GET => self.root_get.add(pattern, method, handler, filters),
-            Method::POST => self.root_post.add(pattern, method, handler, filters),
-            Method::PUT => self.root_put.add(pattern, method, handler, filters),
-            Method::DELETE => self.root_delete.add(pattern, method, handler, filters),
-            Method::HEAD => self.root_head.add(pattern, method, handler, filters),
-            Method::TRACE => self.root_trace.add(pattern, method, handler, filters),
-            Method::CONNECT => self.root_connect.add(pattern, method, handler, filters),
-            Method::PATCH => self.root_patch.add(pattern, method, handler, filters),
-            Method::LINK => self.root_link.add(pattern, method, handler, filters),
-            Method::UNLINK => self.root_unlink.add(pattern, method, handler, filters),
-            Method::PRI => self.root_pri.add(pattern, method, handler, filters)
+            Method::OPTIONS => self.root_option.add(pattern, method, handler, extend),
+            Method::GET => self.root_get.add(pattern, method, handler, extend),
+            Method::POST => self.root_post.add(pattern, method, handler, extend),
+            Method::PUT => self.root_put.add(pattern, method, handler, extend),
+            Method::DELETE => self.root_delete.add(pattern, method, handler, extend),
+            Method::HEAD => self.root_head.add(pattern, method, handler, extend),
+            Method::TRACE => self.root_trace.add(pattern, method, handler, extend),
+            Method::CONNECT => self.root_connect.add(pattern, method, handler, extend),
+            Method::PATCH => self.root_patch.add(pattern, method, handler, extend),
+            Method::LINK => self.root_link.add(pattern, method, handler, extend),
+            Method::UNLINK => self.root_unlink.add(pattern, method, handler, extend),
+            Method::PRI => self.root_pri.add(pattern, method, handler, extend)
         }
     }
 
@@ -98,7 +99,7 @@ impl Root {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct Node {
     /// 资源样式，如`/a/b/:c/d/:e/:f/g`
     pattern: Option<String>,
@@ -108,7 +109,7 @@ pub(crate) struct Node {
     /// 待实现接收请求方法
     pub(crate) handler: Option<Handler>,
     /// 过滤器/拦截器数组
-    pub(crate) filters: Option<Vec<Filter>>,
+    pub(crate) extend: Option<Extend>,
     pub(crate) next_nodes: Vec<Node>,
 }
 
@@ -119,7 +120,7 @@ impl Node {
             pattern_piece: "".to_string(),
             pattern_piece_value: None,
             handler: None,
-            filters: None,
+            extend: None,
             next_nodes: vec![],
         }
     }
@@ -133,15 +134,15 @@ impl Node {
     /// * pattern 资源样式，如`/a/b/:c/d/:e/:f/g`
     /// * method 请求方法
     /// * handler 待实现接收请求方法
-    /// * filters 过滤器/拦截器数组
-    fn add(&mut self, pattern: String, method: Method, handler: Handler, filters: Vec<Filter>) {
+    /// * extend 请求服务扩展，包括过滤器、限流、熔断降级等
+    fn add(&mut self, pattern: String, method: Method, handler: Handler, extend: Option<Extend>) {
         if !pattern.starts_with("/") {
             panic!("path must begin with '/' in http server!")
         }
         let pattern_c = pattern.clone();
         let ps: Vec<&str> = pattern_c.split("/").collect();
         let pattern_split = ps[1..].to_vec();
-        self.add_fn(pattern, method, pattern_split, 0, handler, filters)
+        self.add_fn(pattern, method, pattern_split, 0, handler, extend)
     }
 
     /// 新增可执行服务节点
@@ -151,9 +152,9 @@ impl Node {
     /// * patternSplitArr [a, b, ?, d, ?, ?, g]
     /// * index 当前匹配资源参数下标
     /// * handler 待实现接收请求方法
-    /// * filters 过滤器/拦截器数组
+    /// * extend 请求服务扩展，包括过滤器、限流、熔断降级等
     fn add_fn(&mut self, pattern: String, method: Method, pattern_split: Vec<&str>,
-              mut index: usize, handler: Handler, filters: Vec<Filter>) {
+              mut index: usize, handler: Handler, extend: Option<Extend>) {
         let mut pattern_piece = pattern_split[index].to_string();
         let pattern_piece_value;
         if pattern_piece.starts_with(":") {
@@ -167,27 +168,27 @@ impl Node {
         for next_node in self.next_nodes.iter_mut() {
             // 判断当前资源是否已存在于子项中
             if next_node.pattern_piece == pattern_piece {
-                next_node.add_split(pattern, method, pattern_split, index, handler, filters);
+                next_node.add_split(pattern, method, pattern_split, index, handler, extend);
                 return;
             }
         }
         // 没有子项或没有相同子项，需新建子项并处理服务后续
         self.create_next_node(pattern_piece, pattern_piece_value, pattern, method, pattern_split,
-                              index, handler, filters)
+                              index, handler, extend)
     }
 
     fn create_next_node(&mut self, pattern_piece: String, pattern_piece_value: Option<String>,
                         pattern: String, method: Method, pattern_split: Vec<&str>, index: usize,
-                        handler: Handler, filters: Vec<Filter>) {
+                        handler: Handler, extend: Option<Extend>) {
         let mut next_node = Node {
             pattern: None,
             pattern_piece,
             pattern_piece_value,
             handler: None,
-            filters: None,
+            extend: None,
             next_nodes: vec![],
         };
-        next_node.add_split(pattern, method, pattern_split, index, handler, filters);
+        next_node.add_split(pattern, method, pattern_split, index, handler, extend);
         self.next_nodes.push(next_node)
     }
 
@@ -198,9 +199,9 @@ impl Node {
     /// * patternSplitArr [a, b, ?, d, ?, ?, g]
     /// * index 当前匹配资源参数下标
     /// * handler 待实现接收请求方法
-    /// * filters 过滤器/拦截器数组
+    /// * extend 请求服务扩展，包括过滤器、限流、熔断降级等
     fn add_split(&mut self, pattern: String, method: Method, pattern_split: Vec<&str>,
-                 index: usize, handler: Handler, filters: Vec<Filter>) {
+                 index: usize, handler: Handler, extend: Option<Extend>) {
         // 经过多轮递归，判断资源是否已经解析到最终步
         if pattern_split.len() == index { // 如果资源已经解析到最终步，则表明当前结点是叶子结点
             match self.pattern.clone() {
@@ -210,11 +211,18 @@ impl Node {
                     println!("http server url watch: {} {}", method.as_str(), pattern);
                     self.pattern = Some(pattern);
                     self.handler = Some(handler);
-                    self.filters = Some(filters);
+                    self.extend = extend;
+                    match self.extend.clone() {
+                        Some(src) => match src.limit {
+                            Some(src) => { Thread::spawn(move || src.run()).unwrap(); }
+                            None => {}
+                        }
+                        None => {}
+                    }
                 }
             }
         } else {
-            self.add_fn(pattern, method, pattern_split, index, handler, filters)
+            self.add_fn(pattern, method, pattern_split, index, handler, extend)
         }
     }
 
@@ -246,7 +254,7 @@ impl Node {
                 let (is_self, src) = next_node.fetch_split(
                     pattern.clone(), pattern_split.clone(), pattern_split_len, index);
                 if is_self {
-                    return Some((next_node.clone(), HashMap::new()))
+                    return Some((next_node.clone(), HashMap::new()));
                 } else {
                     match src {
                         Some(res) => return Some(res),
@@ -259,13 +267,13 @@ impl Node {
                 if is_self { // 如果是子结点，则新建fields集合，开始逆向填充
                     let mut fields = HashMap::new();
                     fields.insert(next_node.pattern_piece_value.clone().unwrap(), pattern_piece.to_string());
-                    return Some((next_node.clone(), fields))
+                    return Some((next_node.clone(), fields));
                 } else { // 如果不是子结点，则执行逆向填充
                     match src {
                         Some((node, mut fields)) => {
                             fields.insert(next_node.pattern_piece_value.clone().unwrap(), pattern_piece.to_string());
                             return Some((node, fields));
-                        },
+                        }
                         None => continue
                     }
                 }
@@ -278,11 +286,7 @@ impl Node {
     /// 获取可执行服务节点
     ///
     /// * pattern 资源样式，如`/a/b/c/d/e/f/g`
-    /// * method 请求方法
     /// * patternSplitArr [a, b, ?, d, ?, ?, g]
-    /// * index 当前匹配资源参数下标
-    /// * handler 待实现接收请求方法
-    /// * filters 过滤器/拦截器数组
     ///
     /// # return
     /// * bool 是否返回自身，如果返回自身，则不考虑第二个参数值
@@ -298,22 +302,6 @@ impl Node {
     }
 }
 
-impl Debug for Node {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "pattern: {:#?}, \npattern_piece: {}, \npattern_piece_value: {:#?}, \nhandler: {:#?}\
-        , \nnext_nodes: {:#?}"
-               , self.pattern, self.pattern_piece, self.pattern_piece_value, self.handler,
-               self.next_nodes)
-    }
-}
-
-// pattern: Option<String>,
-// pattern_piece: String,
-// pattern_piece_value: Option<String>,
-// pub(crate) handler: Option<Handler>,
-// pub(crate) filters: Option<Vec<Filter>>,
-// pub(crate) next_nodes: Vec<Node>,
-
 #[cfg(test)]
 mod node_test {
     use crate::{Context, Method};
@@ -322,11 +310,11 @@ mod node_test {
     #[test]
     fn node_test() {
         let mut root = Root::new();
-        root.add("/a/b/:c/d/:e/:f/g".to_string(), Method::POST, h1, vec![]);
-        root.add("/a/b/:c/d/e/f".to_string(), Method::POST, h1, vec![]);
-        root.add("/a/b/:c/d/:e/:f/g".to_string(), Method::GET, h2, vec![]);
-        root.add("/a/c/:c/d/:e/:f/g".to_string(), Method::GET, h2, vec![]);
-        root.add("/a/b/:c/d/:e/:f/g".to_string(), Method::PUT, h3, vec![]);
+        root.add("/a/b/:c/d/:e/:f/g".to_string(), Method::POST, h1, None);
+        root.add("/a/b/:c/d/e/f".to_string(), Method::POST, h1, None);
+        root.add("/a/b/:c/d/:e/:f/g".to_string(), Method::GET, h2, None);
+        root.add("/a/c/:c/d/:e/:f/g".to_string(), Method::GET, h2, None);
+        root.add("/a/b/:c/d/:e/:f/g".to_string(), Method::PUT, h3, None);
 
         assert!(root.root_option.next_nodes.is_empty());
         assert!(root.root_delete.next_nodes.is_empty());
@@ -344,12 +332,12 @@ mod node_test {
     #[test]
     fn node_match_test1() {
         let mut root = Root::new();
-        root.add("/a/b/:c/d/:e/:f/g".to_string(), Method::POST, h1, vec![]);
-        root.add("/a/b/:c/d/e/f".to_string(), Method::POST, h1, vec![]);
-        root.add("/a/b/:c/d/:e/:f/g".to_string(), Method::GET, h2, vec![]);
-        root.add("/a/c/:c/d/:e/:f/g".to_string(), Method::GET, h2, vec![]);
-        root.add("/a/b/:c/d/:e/:f/g".to_string(), Method::PUT, h3, vec![]);
-        root.add("/a/b/:c/d/:e/:f/g/:h".to_string(), Method::PUT, h3, vec![]);
+        root.add("/a/b/:c/d/:e/:f/g".to_string(), Method::POST, h1, None);
+        root.add("/a/b/:c/d/e/f".to_string(), Method::POST, h1, None);
+        root.add("/a/b/:c/d/:e/:f/g".to_string(), Method::GET, h2, None);
+        root.add("/a/c/:c/d/:e/:f/g".to_string(), Method::GET, h2, None);
+        root.add("/a/b/:c/d/:e/:f/g".to_string(), Method::PUT, h3, None);
+        root.add("/a/b/:c/d/:e/:f/g/:h".to_string(), Method::PUT, h3, None);
 
         assert_eq!(root.root_post.next_nodes.len(), 1);
         assert_eq!(root.root_post.next_nodes[0].pattern_piece, "a");
@@ -376,9 +364,9 @@ mod node_test {
     #[test]
     fn node_match_test2() {
         let mut root = Root::new();
-        root.add("/a/b/:c/d/:e/:f/g".to_string(), Method::GET, h2, vec![]);
-        root.add("/a/c/:c/d/:e/:f/g".to_string(), Method::GET, h2, vec![]);
-        root.add("/d/b/:c/d/:e/:f/g".to_string(), Method::GET, h3, vec![]);
+        root.add("/a/b/:c/d/:e/:f/g".to_string(), Method::GET, h2, None);
+        root.add("/a/c/:c/d/:e/:f/g".to_string(), Method::GET, h2, None);
+        root.add("/d/b/:c/d/:e/:f/g".to_string(), Method::GET, h3, None);
 
         assert_eq!(root.root_get.next_nodes.len(), 2);
         assert_eq!(root.root_get.next_nodes[0].pattern_piece, "a");
@@ -401,13 +389,13 @@ mod node_test {
     #[test]
     fn node_fetch_test() {
         let mut root = Root::new();
-        root.add("/a/b/:c/d/:e/:f/g".to_string(), Method::POST, h1, vec![]);
-        root.add("/a/b/:c/d/e/f".to_string(), Method::POST, h2, vec![]);
-        root.add("/a/b/:c/d/:e/:f/g".to_string(), Method::GET, h1, vec![]);
-        root.add("/a/c/:c/d/:e/:f/g".to_string(), Method::GET, h2, vec![]);
-        root.add("/d/b/:c/d/:e/:f/g".to_string(), Method::GET, h3, vec![]);
-        root.add("/a/b/:c/d/:e/:f/g".to_string(), Method::PUT, h1, vec![]);
-        root.add("/a/b/:c/d/:e/:f/g/:h".to_string(), Method::PUT, h1, vec![]);
+        root.add("/a/b/:c/d/:e/:f/g".to_string(), Method::POST, h1, None);
+        root.add("/a/b/:c/d/e/f".to_string(), Method::POST, h2, None);
+        root.add("/a/b/:c/d/:e/:f/g".to_string(), Method::GET, h1, None);
+        root.add("/a/c/:c/d/:e/:f/g".to_string(), Method::GET, h2, None);
+        root.add("/d/b/:c/d/:e/:f/g".to_string(), Method::GET, h3, None);
+        root.add("/a/b/:c/d/:e/:f/g".to_string(), Method::PUT, h1, None);
+        root.add("/a/b/:c/d/:e/:f/g/:h".to_string(), Method::PUT, h1, None);
 
         // let (n1, _fields) = root.fetch("/a/b/c/d/e/f/g".to_string(), Method::POST).unwrap();
         // assert_eq!(n1.handler, root.root_post.next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0].handler);

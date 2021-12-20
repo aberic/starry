@@ -18,12 +18,12 @@ use std::sync::{Arc, RwLock};
 use log::LevelFilter;
 
 use crate::{Context, Request};
+use crate::Extend;
 use crate::server::node::Root;
 use crate::server::Router;
 use crate::utils::concurrent::ThreadPool;
 use crate::utils::errors::StarryResult;
 use crate::utils::log::LogModule;
-use crate::server::router::Filter;
 
 #[derive(Debug, Clone)]
 pub struct HttpServer {
@@ -57,8 +57,8 @@ impl HttpServer {
     ///
     /// * pattern 资源样式，如`/a/b`
     /// * filters 过滤器/拦截器数组
-    pub fn router_wf(&self, pattern: &str, filters: Vec<Filter>) -> Router {
-        Router::new_wf(pattern.to_string(), filters, self.root.clone())
+    pub fn router_wf(&self, pattern: &str, extend: Extend) -> Router {
+        Router::new_wf(pattern.to_string(), extend, self.root.clone())
     }
 
     pub fn set_pool_size(&mut self, pool_size: usize) {
@@ -148,13 +148,9 @@ fn handle_connection(tcp_stream: TcpStream, root: Arc<RwLock<Root>>) {
             log::debug!("method = {}, path = {}, from = {}", request.method(), request.path(), request.client());
             let mut context = Box::new(Context::new(request, fields));
             log::trace!("context = {:#?}", context);
-            match node.filters {
-                Some(ref src) => {
-                    for filter in src {
-                        filter(context.as_mut())
-                    }
-                },
-                None => {},
+            match node.extend.clone() {
+                Some(extend) => extend.run(context.as_mut()),
+                None => {}
             }
             if !context.executed {
                 node.handler()(context)

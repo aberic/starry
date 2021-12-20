@@ -12,40 +12,34 @@
  * limitations under the License.
  */
 
+use std::fmt::{Debug, Formatter};
 use std::ops::Add;
 use std::sync::{Arc, RwLock};
 
 use crate::{Context, Method};
+use crate::server::Extend;
 use crate::server::node::Root;
-use std::fmt::{Debug, Formatter};
 
 /// 待实现接收请求方法
 ///
 /// ctx 请求处理上下文结构
 pub(crate) type Handler = fn(context: Box<Context>);
 
-/// 过滤器/拦截器处理
-///
-/// 过滤操作尽量不要对数据体里的信息进行校验之类的流程，最好是对path、header和cookie进行过滤
-///
-/// ctx 请求处理上下文结构
-pub(crate) type Filter = fn(context: &Context);
-
 pub struct Router {
     /// 临时存储group值
     pattern: String,
     /// 当前路由组的全组过滤器
-    filters: Vec<Filter>,
+    extend: Option<Extend>,
     root: Arc<RwLock<Root>>,
 }
 
 impl Router {
     pub(crate) fn new(pattern: String, root: Arc<RwLock<Root>>) -> Self {
-        Router { pattern, filters: vec![], root }
+        Router { pattern, extend: None, root }
     }
 
-    pub(crate) fn new_wf(pattern: String, filters: Vec<Filter>, root: Arc<RwLock<Root>>) -> Self {
-        Router { pattern, filters, root }
+    pub(crate) fn new_wf(pattern: String, extend: Extend, root: Arc<RwLock<Root>>) -> Self {
+        Router { pattern, extend: Some(extend), root }
     }
 
     /// 新增服务资源，带过滤器
@@ -65,11 +59,28 @@ impl Router {
     /// * method 请求方法
     /// * handler 待实现接收请求方法
     /// * filters 过滤器/拦截器数组
-    fn repo_wf(&self, pattern: &str, method: Method, handler: Handler, mut filters: Vec<Filter>) {
-        filters.append(&mut self.filters.clone());
+    fn repo_wf(&self, pattern: &str, method: Method, handler: Handler, extend: Option<Extend>) {
+        let extend_new;
+        match extend.clone() {
+            Some(src1) => {
+                let mut filters = src1.filters.clone();
+                match self.extend.clone() {
+                    Some(mut src2) => {
+                        filters.append(&mut src2.filters);
+                        extend_new = Some(src1.copy_with(filters))
+                    }
+                    None => extend_new = Some(src1.copy())
+                }
+            }
+            None => match self.extend.clone() {
+                Some(src2) => extend_new = Some(Extend::e1(src2.filters)),
+                None => extend_new = None
+            }
+        }
+
         let root_c = self.root.clone();
         let mut root_r = root_c.write().unwrap();
-        root_r.add(self.pattern.clone().add(pattern), method, handler, filters)
+        root_r.add(self.pattern.clone().add(pattern), method, handler, extend_new)
     }
 
     /// 新增服务资源
@@ -87,55 +98,55 @@ impl Router {
     /// * method 请求方法
     /// * handler 待实现接收请求方法
     fn repo(&self, pattern: &str, method: Method, handler: Handler) {
-        self.repo_wf(pattern, method, handler, vec![])
+        self.repo_wf(pattern, method, handler, None)
     }
 
-    pub fn option_wf(&self, pattern: &str, handler: Handler, filters: Vec<Filter>) {
-        self.repo_wf(pattern, Method::OPTIONS, handler, filters)
+    pub fn option_wf(&self, pattern: &str, handler: Handler, extend: Extend) {
+        self.repo_wf(pattern, Method::OPTIONS, handler, Some(extend))
     }
 
-    pub fn get_wf(&self, pattern: &str, handler: Handler, filters: Vec<Filter>) {
-        self.repo_wf(pattern, Method::GET, handler, filters)
+    pub fn get_wf(&self, pattern: &str, handler: Handler, extend: Extend) {
+        self.repo_wf(pattern, Method::GET, handler, Some(extend))
     }
 
-    pub fn post_wf(&self, pattern: &str, handler: Handler, filters: Vec<Filter>) {
-        self.repo_wf(pattern, Method::POST, handler, filters)
+    pub fn post_wf(&self, pattern: &str, handler: Handler, extend: Extend) {
+        self.repo_wf(pattern, Method::POST, handler, Some(extend))
     }
 
-    pub fn put_wf(&self, pattern: &str, handler: Handler, filters: Vec<Filter>) {
-        self.repo_wf(pattern, Method::PUT, handler, filters)
+    pub fn put_wf(&self, pattern: &str, handler: Handler, extend: Extend) {
+        self.repo_wf(pattern, Method::PUT, handler, Some(extend))
     }
 
-    pub fn delete_wf(&self, pattern: &str, handler: Handler, filters: Vec<Filter>) {
-        self.repo_wf(pattern, Method::DELETE, handler, filters)
+    pub fn delete_wf(&self, pattern: &str, handler: Handler, extend: Extend) {
+        self.repo_wf(pattern, Method::DELETE, handler, Some(extend))
     }
 
-    pub fn head_wf(&self, pattern: &str, handler: Handler, filters: Vec<Filter>) {
-        self.repo_wf(pattern, Method::HEAD, handler, filters)
+    pub fn head_wf(&self, pattern: &str, handler: Handler, extend: Extend) {
+        self.repo_wf(pattern, Method::HEAD, handler, Some(extend))
     }
 
-    pub fn trace_wf(&self, pattern: &str, handler: Handler, filters: Vec<Filter>) {
-        self.repo_wf(pattern, Method::TRACE, handler, filters)
+    pub fn trace_wf(&self, pattern: &str, handler: Handler, extend: Extend) {
+        self.repo_wf(pattern, Method::TRACE, handler, Some(extend))
     }
 
-    pub fn connect_wf(&self, pattern: &str, handler: Handler, filters: Vec<Filter>) {
-        self.repo_wf(pattern, Method::CONNECT, handler, filters)
+    pub fn connect_wf(&self, pattern: &str, handler: Handler, extend: Extend) {
+        self.repo_wf(pattern, Method::CONNECT, handler, Some(extend))
     }
 
-    pub fn patch_wf(&self, pattern: &str, handler: Handler, filters: Vec<Filter>) {
-        self.repo_wf(pattern, Method::PATCH, handler, filters)
+    pub fn patch_wf(&self, pattern: &str, handler: Handler, extend: Extend) {
+        self.repo_wf(pattern, Method::PATCH, handler, Some(extend))
     }
 
-    pub fn link_wf(&self, pattern: &str, handler: Handler, filters: Vec<Filter>) {
-        self.repo_wf(pattern, Method::LINK, handler, filters)
+    pub fn link_wf(&self, pattern: &str, handler: Handler, extend: Extend) {
+        self.repo_wf(pattern, Method::LINK, handler, Some(extend))
     }
 
-    pub fn unlink_wf(&self, pattern: &str, handler: Handler, filters: Vec<Filter>) {
-        self.repo_wf(pattern, Method::UNLINK, handler, filters)
+    pub fn unlink_wf(&self, pattern: &str, handler: Handler, extend: Extend) {
+        self.repo_wf(pattern, Method::UNLINK, handler, Some(extend))
     }
 
-    pub fn pri_wf(&self, pattern: &str, handler: Handler, filters: Vec<Filter>) {
-        self.repo_wf(pattern, Method::PRI, handler, filters)
+    pub fn pri_wf(&self, pattern: &str, handler: Handler, extend: Extend) {
+        self.repo_wf(pattern, Method::PRI, handler, Some(extend))
     }
 
     pub fn option(&self, pattern: &str, handler: Handler) {
