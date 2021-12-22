@@ -15,40 +15,9 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use crossbeam::channel::{Receiver, Sender};
-
+use crate::utils::{Channel, Time};
 use crate::utils::concurrent::Thread;
-use crate::utils::errors::{Errs, StarryResult};
-use crate::utils::Time;
-
-#[derive(Clone, Debug)]
-struct Channel {
-    /// 线程可用状态跨线程通信发送机制，当新建线程时，需要作为线程参数传入
-    tx: Sender<()>,
-    /// 线程可用状态跨线程通信接收机制
-    rx: Receiver<()>,
-}
-
-impl Channel {
-    pub fn new(count: usize) -> Self {
-        let (tx, rx) = crossbeam::channel::bounded(count);
-        Channel { tx, rx }
-    }
-
-    fn send(&self) {
-        match self.tx.send(()) {
-            Ok(_) => {}
-            Err(err) => log::error!("request limit fetch error! {}", err)
-        }
-    }
-
-    fn recv(&self) -> StarryResult<()> {
-        match self.rx.recv() {
-            Ok(_) => Ok(()),
-            Err(err) => Err(Errs::err(err))
-        }
-    }
-}
+use crate::utils::errors::StarryResult;
 
 /// 限流策略
 #[derive(Clone, Debug)]
@@ -62,7 +31,7 @@ pub struct Limit {
     /// 请求允许的最小间隔时间（毫秒），0表示不限
     interval: i64,
     /// 限流通道
-    channel: Arc<Channel>,
+    channel: Arc<Channel<()>>,
     /// 请求时间数组
     times: Arc<Mutex<Vec<i64>>>,
 }
@@ -74,7 +43,7 @@ impl Limit {
     /// * count 请求限定的时间段内允许的请求次数
     /// * interval 请求允许的最小间隔时间（毫秒），小于等于0表示不限
     pub fn new(section: i64, count: usize, interval: i64) -> Self {
-        let channel = Arc::new(Channel::new(count));
+        let channel = Arc::new(Channel::bounded(count));
         let mut times = vec![];
         let un_interval =
             if interval <= 0 {
@@ -103,7 +72,7 @@ impl Limit {
             let mut times = self.times.lock().unwrap();
             if time_now - times[0] > self.section && time_now - times[self.count_sub_1] > self.interval {
                 // 发送一个元素，放行本次请求
-                self.channel.send();
+                self.channel.send(());
                 // 重置时间集合
                 times.remove(0);
                 times.push(time_now)
@@ -118,25 +87,13 @@ impl Limit {
 
 #[cfg(test)]
 mod limit_test {
-    use crate::server::limit::{Channel, Limit};
+    use crate::server::limit::Limit;
     use crate::utils::concurrent::Thread;
-
-    impl Channel {
-        fn len(&self) -> (usize, usize) {
-            (self.tx.len(), self.rx.len())
-        }
-    }
-
-    impl Limit {
-        fn len(&self) -> (usize, usize) {
-            self.channel.len()
-        }
-    }
 
     #[test]
     fn loops() {
         let l = Limit::new(1000, 5, 100);
-        let mut l_c = l.clone();
+        let l_c = l.clone();
         Thread::spawn(move || l_c.run()).unwrap();
         test_loop(l);
     }
@@ -145,12 +102,12 @@ mod limit_test {
         for i in 0..20 {
             let limit_c = limit.clone();
             Thread::spawn(move || {
-                println!("被堵住了 {} channel tx len = {}, rx len = {}", i, limit_c.len().0, limit_c.len().1);
+                println!("被堵住了 {} channel", i);
                 match limit_c.recv() {
                     Ok(_) => println!("OK!"),
                     Err(err) => println!("err = {}", err)
                 }
-                println!("被放行了 {} channel tx len = {}, rx len = {}", i, limit_c.len().0, limit_c.len().1);
+                println!("被放行了 {} channel", i);
             }).unwrap().join().unwrap();
         }
     }

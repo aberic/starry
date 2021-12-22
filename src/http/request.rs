@@ -342,6 +342,10 @@ impl Request {
         let mut size;
         match self.stream.read(&mut buffer) {
             Ok(src) => {
+                log::trace!("stream read size = {}", src);
+                if src == 0 { // 没有数据进入
+                    return Err(Errs::str("tcp stream had no data!"))
+                }
                 size = src;
                 iter = buffer.iter()
             }
@@ -352,6 +356,7 @@ impl Request {
 
         // 解析请求行信息 POST /path/data?key=value&key2=value2 HTTP/1.1
         let (location, count) = self.parse_request_line(iter.borrow_mut())?;
+        // log::trace!("parse_request_line count = {}, method = {}, version = {}", count, self.method, self.version.to_string());
         size -= count;
 
         let node;
@@ -616,10 +621,10 @@ impl Request {
                     Response::expectation_failed(),
                     Errs::str("host not found in header!")))
             }
-            Version::HTTP_2 => match self.header.get_host() {
-                Some(src) => self.host = src.to_string(),
-                None => self.host = self.url.authority().addr().to_string()
-            }
+            // Version::HTTP_2 => match self.header.get_host() {
+            //     Some(src) => self.host = src.to_string(),
+            //     None => self.host = self.url.authority().addr().to_string()
+            // }
             _ => return Err(self.interrupt(
                 Response::http_version_not_supported(),
                 Errs::str("parse request failed, version not support!")))

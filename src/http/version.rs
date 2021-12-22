@@ -32,7 +32,7 @@ pub struct Version {
 pub enum Protocol {
     Http10,
     Http11,
-    Http2,
+    // Http2,
 }
 
 impl Version {
@@ -50,12 +50,12 @@ impl Version {
         minor: 1,
     };
 
-    /// `HTTP/2.0`
-    pub const HTTP_2: Version = Version {
-        protocol: Http2,
-        major: 2,
-        minor: 0,
-    };
+    // /// `HTTP/2.0`
+    // pub const HTTP_2: Version = Version {
+    //     protocol: Http2,
+    //     major: 2,
+    //     minor: 0,
+    // };
 
     pub fn protocol(&self) -> Protocol {
         self.protocol.clone()
@@ -73,7 +73,7 @@ impl Version {
         match src {
             "HTTP/1.0" => Ok(Version::HTTP_10),
             "HTTP/1.1" => Ok(Version::HTTP_11),
-            "HTTP/2.0" => Ok(Version::HTTP_2),
+            // "HTTP/2.0" => Ok(Version::HTTP_2),
             _ => Err(Errs::string(format!("version is not support except HTTP/1.0 HTTP/1.1 HTTP/2.0!"))),
         }
     }
@@ -83,7 +83,7 @@ impl Version {
         match src {
             b"HTTP/1.0" => Ok(Version::HTTP_10),
             b"HTTP/1.1" => Ok(Version::HTTP_11),
-            b"HTTP/2.0" => Ok(Version::HTTP_2),
+            // b"HTTP/2.0" => Ok(Version::HTTP_2),
             _ => Err(Errs::string(format!("version is not support except HTTP/1.0 HTTP/1.1 HTTP/2.0!"))),
         }
     }
@@ -92,7 +92,7 @@ impl Version {
         match self.protocol {
             Http10 => b"HTTP/1.0",
             Http11 => b"HTTP/1.1",
-            Http2 => b"HTTP/2.0",
+            // Http2 => b"HTTP/2.0",
         }
     }
 }
@@ -102,7 +102,7 @@ impl AsRef<str> for Version {
         match self.protocol {
             Http10 => "HTTP/1.0",
             Http11 => "HTTP/1.1",
-            Http2 => "HTTP/2.0",
+            // Http2 => "HTTP/2.0",
         }
     }
 }
@@ -167,11 +167,11 @@ mod version_test {
 
     #[test]
     fn scheme_eq() {
-        assert_eq!(Version::HTTP_2, Version::HTTP_2);
+        // assert_eq!(Version::HTTP_2, Version::HTTP_2);
         assert_eq!(Version::HTTP_10, "HTTP/1.0");
         assert_eq!(&Version::HTTP_11, "HTTP/1.1");
 
-        assert_eq!("HTTP/2.0", Version::HTTP_2);
+        // assert_eq!("HTTP/2.0", Version::HTTP_2);
         assert_eq!("HTTP/1.1", &Version::HTTP_11);
 
         assert_eq!(&Version::HTTP_11, Version::HTTP_11);
@@ -180,8 +180,8 @@ mod version_test {
 
     #[test]
     fn to_string() {
-        let v1 = Version::from_str("HTTP/2.0").unwrap();
-        assert_eq!(v1.to_string(), "HTTP/2.0");
+        let v1 = Version::from_str("HTTP/1.0").unwrap();
+        assert_eq!(v1.to_string(), "HTTP/1.0");
 
         let v2 = Version::default();
         assert_eq!(v2.to_string(), "HTTP/1.1");

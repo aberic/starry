@@ -129,6 +129,7 @@ impl Response {
             content_length: 0,
             close: !connection,
         };
+        resp.write(vec![]);
         if connection {
             resp.header.set_connection();
         }

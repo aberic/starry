@@ -13,7 +13,7 @@
  */
 
 use std::collections::HashMap;
-use std::fmt::Debug;
+use std::fmt::{Debug, Formatter};
 
 use crate::Method;
 use crate::server::Extend;
@@ -99,7 +99,7 @@ impl Root {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub(crate) struct Node {
     /// 资源样式，如`/a/b/:c/d/:e/:f/g`
     pattern: Option<String>,
@@ -111,6 +111,33 @@ pub(crate) struct Node {
     /// 过滤器/拦截器数组
     pub(crate) extend: Option<Extend>,
     pub(crate) next_nodes: Vec<Node>,
+}
+
+impl ToString for Node {
+    fn to_string(&self) -> String {
+        let pattern = self.pattern.clone().unwrap_or("".to_string());
+        let pattern_piece = self.pattern_piece.clone();
+        let pattern_piece_value = self.pattern_piece_value.clone().unwrap_or("".to_string());
+        format!("{}-{}-{}", pattern, pattern_piece, pattern_piece_value)
+    }
+}
+
+impl<'a> PartialEq<&'a Node> for Node {
+    fn eq(&self, other: &&'a Node) -> bool {
+        self.to_string() == other.to_string()
+    }
+}
+
+impl<'a> PartialEq<Node> for &'a Node {
+    fn eq(&self, other: &Node) -> bool {
+        self.to_string() == other.to_string()
+    }
+}
+
+impl<'a> PartialEq<Node> for Node {
+    fn eq(&self, other: &Node) -> bool {
+        self.to_string() == other.to_string()
+    }
 }
 
 impl Node {
@@ -302,6 +329,15 @@ impl Node {
     }
 }
 
+impl Debug for Node {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "pattern: {:#?}, \npattern_piece: {}, \npattern_piece_value: {:#?}, \nhandler.is_some: {:#?}\
+        , \nextend: {:#?}, \nnext_nodes: {:#?}"
+               , self.pattern, self.pattern_piece, self.pattern_piece_value, self.handler.is_some(),
+               self.extend, self.next_nodes)
+    }
+}
+
 #[cfg(test)]
 mod node_test {
     use crate::{Context, Method};
@@ -401,13 +437,13 @@ mod node_test {
         // assert_eq!(n1.handler, root.root_post.next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0].handler);
 
         let (n1, _fields) = root.fetch("/a/b/c/d/e/f/g/h".to_string(), Method::PUT).unwrap();
-        assert_eq!(n1.handler, root.root_put.next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0].handler);
+        assert_eq!(n1, root.root_put.next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0]);
     }
 
-    fn h1(_context: Box<Context>) {}
+    fn h1(_context: &mut Context) {}
 
-    fn h2(_context: Box<Context>) {}
+    fn h2(_context: &mut Context) {}
 
-    fn h3(_context: Box<Context>) {}
+    fn h3(_context: &mut Context) {}
 }
 

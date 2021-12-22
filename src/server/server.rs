@@ -12,7 +12,8 @@
  * limitations under the License.
  */
 
-use std::net::{TcpListener, TcpStream, ToSocketAddrs};
+use std::io::Write;
+use std::net::{Shutdown, TcpListener, TcpStream, ToSocketAddrs};
 use std::sync::{Arc, RwLock};
 
 use log::LevelFilter;
@@ -21,7 +22,8 @@ use crate::{Context, Request};
 use crate::Extend;
 use crate::server::node::Root;
 use crate::server::Router;
-use crate::utils::concurrent::ThreadPool;
+use crate::utils::{Channel, Time};
+use crate::utils::concurrent::{Thread, ThreadPool};
 use crate::utils::errors::StarryResult;
 use crate::utils::log::LogModule;
 
@@ -31,6 +33,8 @@ pub struct HttpServer {
     ///
     /// 线程池的大小是生成的工作线程的数量。默认情况下，等于CPU核数
     pool_size: usize,
+    /// 设置是否在接受的连接上启用`TCP keepalive`消息，单位ms。如果request启用，默认30000
+    keepalive: i64,
     /// 日志策略
     module: Option<LogModule>,
     root: Arc<RwLock<Root>>,
@@ -38,7 +42,7 @@ pub struct HttpServer {
 
 impl HttpServer {
     pub fn new() -> Self {
-        HttpServer { pool_size: 0, module: None, root: Arc::new(RwLock::new(Root::new())) }
+        HttpServer { pool_size: 0, keepalive: 30000, module: None, root: Arc::new(RwLock::new(Root::new())) }
     }
 
     /// 创建路由组
@@ -65,6 +69,14 @@ impl HttpServer {
         self.pool_size = pool_size
     }
 
+    pub fn set_keepalive(&mut self, keepalive: i64) {
+        if keepalive < 0 {
+            self.keepalive = 0;
+        } else {
+            self.keepalive = keepalive
+        }
+    }
+
     /// http服务日志设置
     ///
     /// * level输出日志级别，默认DEBUG
@@ -89,21 +101,15 @@ impl HttpServer {
     }
 
     fn log_init(&self) {
-        match self.module.clone() {
-            Some(src) => src.config_log(vec![]),
-            None => {
-                let module = LogModule {
-                    name: String::from("starry-http"),
-                    pkg: "".to_string(),
-                    level: LevelFilter::Trace,
-                    additive: true,
-                    dir: String::from("tmp"),
-                    file_max_size: 1024,
-                    file_max_count: 7,
-                };
-                module.config_log(vec![])
-            }
-        }
+        self.module.clone().unwrap_or(LogModule {
+            name: String::from("starry-http"),
+            pkg: "".to_string(),
+            level: LevelFilter::Trace,
+            additive: true,
+            dir: String::from("tmp"),
+            file_max_size: 1024,
+            file_max_count: 7,
+        }).config_log(vec![])
     }
 
     /// 创建一个新的HttpListener，它将被绑定到指定的端口。
@@ -128,8 +134,9 @@ impl HttpServer {
         for tcp_stream_result in tcp_listener.incoming() {
             match tcp_stream_result {
                 Ok(tcp_stream) => {
+                    let keepalive = self.keepalive;
                     let root = self.root.clone();
-                    match thread_pool.execute(move || handle_connection(tcp_stream, root)) {
+                    match thread_pool.execute(move || handle_connection(tcp_stream, root, keepalive)) {
                         Ok(()) => {}
                         Err(err) => log::error!("thread pool execute tcp stream error, {}", err)
                     }
@@ -141,25 +148,142 @@ impl HttpServer {
     }
 }
 
-fn handle_connection(tcp_stream: TcpStream, root: Arc<RwLock<Root>>) {
-    match Request::from(tcp_stream, root) {
+/// 针对本次stream进行处理
+fn handle_connection(tcp_stream: TcpStream, root: Arc<RwLock<Root>>, mut keepalive: i64) {
+    log::trace!("handle_connection");
+    match tcp_stream.try_clone() {
+        Ok(src) => {
+            let (close, shutdown) = exec_stream(src, root.clone());
+            if shutdown { // 如果连接关闭，直接返回
+                return;
+            }
+            if close { // 如果不保持连接，当前keepalive置0
+                keepalive = 0;
+            }
+            match tcp_stream.try_clone() {
+                Ok(src) => {
+                    // 双线异步循环执行超时检查和stream解析
+                    loop_exec(src, root.clone(), keepalive)
+                }
+                Err(err) => log::error!("request tcp stream clone in handle connection 1 failed! {}", err.to_string())
+            }
+        }
+        Err(err) => log::error!("request tcp stream clone in handle connection 2 failed! {}", err.to_string())
+    }
+}
+
+/// 执行stream解析操作
+///
+/// * 是否关闭连接
+/// * 是否关闭连接
+fn exec_stream(tcp_stream: TcpStream, root: Arc<RwLock<Root>>) -> (bool, bool) {
+    match Request::from(tcp_stream, root.clone()) {
         // request分预解析和解析两个过程，预解析用于判断请求有效性，如无效，则放弃后续解析操作
         Ok((request, node, fields)) => {
+            let close = request.close;
             log::debug!("method = {}, path = {}, from = {}", request.method(), request.path(), request.client());
             let mut context = Box::new(Context::new(request, fields));
             log::trace!("context = {:#?}", context);
             match node.extend.clone() {
-                Some(extend) => extend.run(context.as_mut()),
+                Some(extend) => extend.exec(context.as_mut()), // 扩展执行，自我诊断
                 None => {}
             }
             if !context.executed {
-                node.handler()(context)
+                node.handler()(context.as_mut())
+            }
+            (close, false)
+        }
+        Err(err) => {
+            if err.to_string().eq("tcp stream had no data!") {
+                (true, true)
+            } else {
+                log::info!("request from failed! {}", err.to_string());
+                (true, false)
             }
         }
-        Err(err) => log::info!("request from error, {}", err.to_string())
     }
 }
 
+/// 双线异步循环执行超时检查和stream解析
+fn loop_exec(mut tcp_stream: TcpStream, root: Arc<RwLock<Root>>, keepalive: i64) {
+    // 创建一个可以将stream接收信号同步更新至检查超时线程的通道
+    let channel = Arc::new(Channel::unbounded());
+    match tcp_stream.try_clone() {
+        Ok(src) => {
+            let channel = channel.clone();
+            // 新启线程检查当前stream是否超时
+            match Thread::spawn(move || check_keepalive(src, keepalive, channel)) {
+                Ok(_) => {}
+                Err(err) => {
+                    log::error!("loop exec check stream failed! {}", err.to_string());
+                    match tcp_stream.write("HTTP/1.1 500 Internal Server Error\r\n\r\n".as_bytes()) {
+                        Ok(_) => {}
+                        Err(err) => {
+                            log::error!("loop exec check stream with write failed! {}", err.to_string());
+                            return;
+                        }
+                    }
+                }
+            };
+        }
+        Err(err) => log::error!("request tcp stream clone in loop exec 1 failed! {}", err.to_string())
+    }
+    // 当前线程开启循环读取stream操作
+    loop {
+        match tcp_stream.try_clone() {
+            Ok(src) => {
+                let (_, shutdown) = exec_stream(src, root.clone());
+                if shutdown { // 如果连接关闭，直接返回
+                    channel.send(Check::Break);
+                    return;
+                }
+                // 处理完当前stream后需要更新超时时间起始参考值
+                let channel = channel.clone();
+                channel.send(Check::Update);
+            }
+            Err(err) => log::error!("request tcp stream clone in loop exec 2 failed! {}", err.to_string())
+        }
+    }
+}
+
+/// 检查当前stream是否超时
+fn check_keepalive(tcp_stream: TcpStream, keepalive: i64, channel: Arc<Channel<Check>>) {
+    let mut time = Time::now();
+    time.add_milliseconds(keepalive);
+    let mut expect_time = time.num_milliseconds();
+    loop {
+        let mut time_now = Time::now();
+        if expect_time <= time_now.num_milliseconds() {
+            log::trace!("expect_time = {}", Time::format_data(Time::from_milliseconds(expect_time), "%Y-%m-%d %H:%M:%S"));
+            break;
+        } else {
+            match channel.try_recv() {
+                Ok(src) => match src {
+                    Check::Update => {
+                        log::trace!("channel receive update!");
+                        time_now.add_milliseconds(keepalive);
+                        expect_time = time_now.num_milliseconds();
+                    }
+                    Check::Break => break
+                }
+                Err(_) => {}
+            }
+        }
+    }
+    log::debug!("check stream {} shutdown!", tcp_stream.peer_addr().unwrap().to_string());
+    match tcp_stream.shutdown(Shutdown::Both) {
+        Ok(_) => log::trace!("tcp stream shutdown success!"),
+        Err(err) => log::error!("tcp stream shutdown failed! {}", err.to_string())
+    }
+}
+
+/// 超时检查
+enum Check {
+    /// 更新超时起始参考值
+    Update,
+    /// 退出检查
+    Break,
+}
 
 #[cfg(test)]
 mod server_test {
@@ -191,8 +315,8 @@ mod server_test {
         assert_eq!(fields1.get("b").unwrap(), "y");
         assert_eq!(fields2.get("b").unwrap(), "m");
 
-        assert_eq!(n1.handler, server.root.read().unwrap().root_get.next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0].handler);
-        assert_eq!(n2.handler, server.root.read().unwrap().root_get.next_nodes[0].next_nodes[0].next_nodes[1].next_nodes[0].next_nodes[0].next_nodes[0].handler);
+        assert_eq!(n1, server.root.read().unwrap().root_get.next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0]);
+        assert_eq!(n2, server.root.read().unwrap().root_get.next_nodes[0].next_nodes[0].next_nodes[1].next_nodes[0].next_nodes[0].next_nodes[0]);
     }
 
     #[test]
@@ -208,9 +332,9 @@ mod server_test {
         let (n2, _fields) = server.fetch("/x/y/test1/:a/c/d/:b".to_string(), Method::GET).unwrap();
         let (n3, _fields) = server.fetch("/x/y/a/c/d/:b".to_string(), Method::GET).unwrap();
 
-        assert_eq!(n1.handler, server.root.read().unwrap().root_get.next_nodes[0].next_nodes[0].next_nodes[1].next_nodes[0].handler);
-        assert_eq!(n2.handler, server.root.read().unwrap().root_get.next_nodes[1].next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0].handler);
-        assert_eq!(n3.handler, server.root.read().unwrap().root_get.next_nodes[1].next_nodes[0].next_nodes[1].next_nodes[0].next_nodes[0].next_nodes[0].handler);
+        assert_eq!(n1, server.root.read().unwrap().root_get.next_nodes[0].next_nodes[0].next_nodes[1].next_nodes[0]);
+        assert_eq!(n2, server.root.read().unwrap().root_get.next_nodes[1].next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0]);
+        assert_eq!(n3, server.root.read().unwrap().root_get.next_nodes[1].next_nodes[0].next_nodes[1].next_nodes[0].next_nodes[0].next_nodes[0]);
     }
 
     fn router1(server: HttpServer) {
@@ -225,13 +349,13 @@ mod server_test {
         router2.get("/a/c/d/:b", h2);
     }
 
-    fn h1(_context: Box<Context>) {}
+    fn h1(_context: &mut Context) {}
 
-    fn h2(_context: Box<Context>) {}
+    fn h2(_context: &mut Context) {}
 
-    fn h3(_context: Box<Context>) {}
+    fn h3(_context: &mut Context) {}
 
-    fn h4(_context: Box<Context>) {}
+    fn h4(_context: &mut Context) {}
 }
 
 

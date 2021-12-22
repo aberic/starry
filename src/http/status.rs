@@ -66,7 +66,7 @@ impl Status {
     pub const NON_AUTHORITATIVE_INFORMATION: Status = Status(203, "Non Authoritative Information");
     /// 204 No Content
     ///
-    /// 无内容：服务器成功处理了请求，但没有返回任何内容。
+    /// 无内容：服务器成功处理了请求，但没有 返回任何内容。
     ///
     /// 参见[[RFC7231, Section 6.3.5](https://tools.ietf.org/html/rfc7231#section-6.3.5)]
     pub const NO_CONTENT: Status = Status(204, "No Content");
@@ -94,7 +94,20 @@ impl Status {
     pub const ALREADY_REPORTED: Status = Status(208, "Already Reported");
     /// 226 IM Used
     ///
+    /// 服务器已经完成了对资源的GET请求，响应是应用于当前实例的一个或多个实例操作的结果的表示。
+    /// 实际的当前实例可能不可用，除非根据具体的实例操作，将此响应与其他以前或将来的响应结合使用。
+    /// 如果是，则结果实例的头是结合来自status-226响应的头和其他实例的头的结果，遵循HTTP/1.1规范10 [13.5.3]节中的规则。
+    ///
+    /// 请求必须包含一个A-IM报头字段列出至少一个实例操作。响应必须包含Etag报头字段，给出当前实例的实体标签。
+    ///
+    /// 一个状态码为226的响应可以被缓存存储并用于回应后续的请求，这取决于HTTP过期机制和任何缓存控制头，以及章节[10.6]的要求。
+    ///
+    /// 一个状态码为226的响应可以被缓存使用，与基实例的缓存条目一起，为当前实例创建一个缓存条目。
+    ///
     /// 参见[[RFC3229](https://tools.ietf.org/html/rfc3229)]
+    ///
+    /// [13.5.3]: https://datatracker.ietf.org/doc/html/rfc3229#section-13.5.3
+    /// [10.6]: https://datatracker.ietf.org/doc/html/rfc3229#section-10.6
     pub const IM_USED: Status = Status(226, "IM Used");
 
     // http状态返回代码 3xx （重定向）

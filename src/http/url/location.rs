@@ -30,7 +30,7 @@ use crate::Values;
 /// Scheme          Authority                                Location
 /// ```
 ///
-/// [`RFC2396`]: https://datatracker.ietf.org/doc/html/rfc2396#section-3.2
+/// 参考[`RFC2396`](https://datatracker.ietf.org/doc/html/rfc2396#section-3.2)
 #[derive(Clone)]
 pub struct Location {
     path: String,

@@ -15,11 +15,13 @@
 // use std::io::{Read, Write};
 // use std::net::{TcpListener, TcpStream};
 
+use log::LevelFilter;
 use starry::{Context, Cookie, HttpServer, Limit, Status};
 use starry::Extend;
 
 fn main() {
-    let server = HttpServer::new();
+    let mut server = HttpServer::new();
+    server.set_log(LevelFilter::Trace, "tmp".to_string(), 1024, 7);
     router1(server.clone());
     router2(server.clone());
     let addr = "0.0.0.0:7878";
@@ -61,7 +63,7 @@ fn f15(context: &mut Context) {
     context.response()
 }
 
-fn h11(mut context: Box<Context>) {
+fn h11(context: &mut Context) {
     context.resp_status(Status::OK);
     context.resp_set_header_str("a", "b");
     context.resp_set_header_str("m", "n");
@@ -75,7 +77,7 @@ fn h11(mut context: Box<Context>) {
     context.response();
 }
 
-fn h12(mut context: Box<Context>) {
+fn h12(context: &mut Context) {
     context.resp_status(Status::BAD_REQUEST);
     println!("h12");
     println!("a = {}", context.req_field("a").unwrap());
@@ -83,7 +85,7 @@ fn h12(mut context: Box<Context>) {
     context.response();
 }
 
-fn h13(mut context: Box<Context>) {
+fn h13(context: &mut Context) {
     context.resp_status(Status::MULTI_STATUS);
     println!("h13");
     println!("a = {}", context.req_field("a").unwrap());
@@ -92,7 +94,7 @@ fn h13(mut context: Box<Context>) {
 }
 
 // 该方法永远不会执行，被h13拦截了
-fn h14(mut context: Box<Context>) {
+fn h14(context: &mut Context) {
     context.resp_status(Status::LENGTH_REQUIRED);
     println!("h14");
     println!("b = {}", context.req_field("b").unwrap());
@@ -107,7 +109,7 @@ fn router2(server: HttpServer) {
     router.post("/test1/a/c/d/:b", h24);
 }
 
-fn h21(mut context: Box<Context>) {
+fn h21(context: &mut Context) {
     context.resp_status(Status::BAD_REQUEST);
     println!("h12");
     println!("a = {}", context.req_field("a").unwrap());
@@ -118,7 +120,7 @@ fn h21(mut context: Box<Context>) {
     context.response();
 }
 
-fn h22(mut context: Box<Context>) {
+fn h22(context: &mut Context) {
     context.resp_status(Status::BAD_REQUEST);
     println!("h12");
     println!("a = {}", context.req_field("a").unwrap());
@@ -126,7 +128,7 @@ fn h22(mut context: Box<Context>) {
     context.response();
 }
 
-fn h23(mut context: Box<Context>) {
+fn h23(context: &mut Context) {
     context.resp_status(Status::MULTI_STATUS);
     println!("h13");
     println!("a = {}", context.req_field("a").unwrap());
@@ -135,7 +137,7 @@ fn h23(mut context: Box<Context>) {
 }
 
 // 该方法永远不会执行，被h23拦截了
-fn h24(mut context: Box<Context>) {
+fn h24(context: &mut Context) {
     context.resp_status(Status::LENGTH_REQUIRED);
     println!("h14");
     println!("b = {}", context.req_field("b").unwrap());

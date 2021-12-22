@@ -23,7 +23,7 @@ use crate::server::node::Root;
 /// 待实现接收请求方法
 ///
 /// ctx 请求处理上下文结构
-pub(crate) type Handler = fn(context: Box<Context>);
+pub(crate) type Handler = fn(context: &mut Context);
 
 pub struct Router {
     /// 临时存储group值
@@ -67,13 +67,26 @@ impl Router {
                 match self.extend.clone() {
                     Some(mut src2) => {
                         filters.append(&mut src2.filters);
-                        extend_new = Some(src1.copy_with(filters))
+                        let downgrade = match src1.downgrade {
+                            Some(src) => Some(src),
+                            None => match src2.downgrade {
+                                Some(src) => Some(src),
+                                None => None
+                            }
+                        };
+                        extend_new = Some(src1.copy2(filters, downgrade))
                     }
-                    None => extend_new = Some(src1.copy())
+                    None => extend_new = Some(src1.copy1())
                 }
             }
             None => match self.extend.clone() {
-                Some(src2) => extend_new = Some(Extend::e1(src2.filters)),
+                Some(src2) => {
+                    let downgrade = match src2.downgrade {
+                        Some(src) => Some(src),
+                        None => None
+                    };
+                    extend_new = Some(Extend::e4(src2.filters, downgrade))
+                }
                 None => extend_new = None
             }
         }
@@ -232,17 +245,17 @@ mod router_test {
         let (n3, _fields) = router.fetch_mock("/m/n/test1/:a/c/d".to_string(), Method::GET).unwrap();
         let (n4, _fields) = router.fetch_mock("/m/n/a/c/d".to_string(), Method::GET).unwrap();
 
-        assert_eq!(n1.handler, router.root.read().unwrap().root_get.next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0].handler);
-        assert_eq!(n2.handler, router.root.read().unwrap().root_get.next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0].handler);
-        assert_eq!(n3.handler, router.root.read().unwrap().root_get.next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0].handler);
-        assert_eq!(n4.handler, router.root.read().unwrap().root_get.next_nodes[0].next_nodes[0].next_nodes[1].next_nodes[0].next_nodes[0].handler);
+        assert_eq!(n1, router.root.read().unwrap().root_get.next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0]);
+        assert_eq!(n2, router.root.read().unwrap().root_get.next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0]);
+        assert_eq!(n3, router.root.read().unwrap().root_get.next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0].next_nodes[0]);
+        assert_eq!(n4, router.root.read().unwrap().root_get.next_nodes[0].next_nodes[0].next_nodes[1].next_nodes[0].next_nodes[0]);
     }
 
-    fn h1(_context: Box<Context>) {}
+    fn h1(_context: &mut Context) {}
 
-    fn h2(_context: Box<Context>) {}
+    fn h2(_context: &mut Context) {}
 
-    fn h3(_context: Box<Context>) {}
+    fn h3(_context: &mut Context) {}
 
-    fn h4(_context: Box<Context>) {}
+    fn h4(_context: &mut Context) {}
 }
