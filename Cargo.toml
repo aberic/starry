@@ -42,3 +42,9 @@ version = "1"
 [dependencies.bytes]
 version = "1"
 features = ["serde"]
+
+[dependencies.flate2]
+version = "1"
+
+#[dependencies.bencher]
+#version = "*"

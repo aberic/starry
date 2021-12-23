@@ -16,8 +16,10 @@
 // use std::net::{TcpListener, TcpStream};
 
 use log::LevelFilter;
-use starry::{Context, Cookie, HttpServer, Limit, Status};
+
+use starry::{Context, HttpServer, Limit, Status};
 use starry::Extend;
+use starry::header::Cookie;
 
 fn main() {
     let mut server = HttpServer::new();
@@ -115,6 +117,7 @@ fn h21(context: &mut Context) {
     println!("a = {}", context.req_field("a").unwrap());
     println!("b = {}", context.req_field("b").unwrap());
     println!("1 = {:#?}", context.req_form("1").unwrap());
+    println!("key = {:#?}", context.req_param("key").unwrap());
     println!("4 = {:#?}", context.req_form_file("4").unwrap());
     println!("10 = {:#?}", context.req_form_file("10").unwrap());
     context.response();

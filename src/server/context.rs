@@ -15,15 +15,17 @@
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::hash::Hash;
+use std::net::TcpStream;
 
-use crate::{ContentType, Cookie, Header, Request, Response, Status, Version};
+use crate::{Header, Request, Response, Status, Version};
+use crate::http::header::{ContentType, Cookie};
 use crate::http::url::authority::{Addr, Userinfo};
 use crate::http::values::FileHeader;
 use crate::utils::errors::StarryResult;
 
 #[derive(Debug)]
 pub struct Context {
-    request: Request,
+    request: Request<TcpStream>,
     response: Response,
     fields: HashMap<String, String>,
     /// 是否已经执行过response方法
@@ -32,10 +34,10 @@ pub struct Context {
 
 /// request相关
 impl Context {
-    pub(crate) fn new(request: Request, fields: HashMap<String, String>) -> Self {
+    pub(crate) fn new(request: Request<TcpStream>, fields: HashMap<String, String>, compress: bool) -> Self {
         let version = request.version();
         let connection = !request.close;
-        Context { request, response: Response::new(version, connection), fields, executed: false }
+        Context { request, response: Response::new(version, connection, compress), fields, executed: false }
     }
 
     // pub fn get_request(&self) -> StarryResult<Request> {
@@ -104,10 +106,7 @@ impl Context {
         K: Borrow<K>,
         K: Hash + Eq,
         String: Borrow<K>, {
-        match self.request.form()?.get(k) {
-            Some(src) => Ok(Some(src.clone())),
-            None => Ok(None)
-        }
+        self.request.form_value(k)
     }
 
     /// 返回对应于请求表单中定义的参数存在性。
@@ -115,15 +114,12 @@ impl Context {
         K: Borrow<K>,
         K: Hash + Eq,
         String: Borrow<K>, {
-        match self.request.form()?.get(k) {
-            Some(_) => Ok(true),
-            None => Ok(false),
-        }
+        self.request.have_form_value(k)
     }
 
     /// 请求表单中定义的参数数量
     pub fn req_count_form(&mut self) -> StarryResult<usize> {
-        Ok(self.request.form()?.len())
+        self.request.count_form_value()
     }
 
     /// 返回对应于URI请求参数中定义参数值的引用。
@@ -131,10 +127,7 @@ impl Context {
         K: Borrow<K>,
         K: Hash + Eq,
         String: Borrow<K>, {
-        match self.request.form_param.get(k) {
-            Some(src) => Some(src.clone()),
-            None => None
-        }
+        self.request.param_value(k)
     }
 
     /// 返回对应于URI请求参数中定义的参数存在性。
@@ -142,15 +135,12 @@ impl Context {
         K: Borrow<K>,
         K: Hash + Eq,
         String: Borrow<K>, {
-        match self.request.form_param.get(k) {
-            Some(_) => true,
-            None => false,
-        }
+        self.request.have_param_value(k)
     }
 
     /// URI请求参数中定义的参数数量
     pub fn req_count_param(&self) -> usize {
-        self.request.form_param.len()
+        self.request.count_param_value()
     }
 
     /// 返回对应于URI资源路径中定义参数值的引用。
@@ -229,25 +219,25 @@ impl Context {
     }
 
     pub fn resp_body(&mut self, body: Vec<u8>) {
-        self.response.write(body)
+        self.response.write(body, self.request.accept_encoding.clone())
     }
 
     pub fn resp_body_slice(&mut self, body: &'static [u8]) {
-        self.response.write_slice(body)
+        self.response.write_slice(body, self.request.accept_encoding.clone())
     }
 
     pub fn resp_bodies(&mut self, body: Vec<u8>, content_type: ContentType) {
-        self.response.write_type(body, content_type)
+        self.response.write_type(body, content_type, self.request.accept_encoding.clone())
     }
 
     pub fn resp_body_slices(&mut self, body: &'static [u8], content_type: ContentType) {
-        self.response.write_slice_type(body, content_type)
+        self.response.write_slice_type(body, content_type, self.request.accept_encoding.clone())
     }
 
     pub fn response(&mut self) {
         self.executed = true;
         match self.request.response(self.response.clone()) {
-            Ok(()) => {},
+            Ok(()) => {}
             Err(err) => log::error!("response failed! {}", err)
         }
     }

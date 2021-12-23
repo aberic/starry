@@ -26,8 +26,6 @@ pub struct Limit {
     section: i64,
     /// 请求限定的时间段内允许的请求次数
     count: usize,
-    /// 请求限定的时间段内允许的请求次数 - 1
-    count_sub_1: usize,
     /// 请求允许的最小间隔时间（毫秒），0表示不限
     interval: i64,
     /// 限流通道
@@ -57,8 +55,7 @@ impl Limit {
         }
         Limit {
             section,
-            count,
-            count_sub_1: count - 1,
+            count: count - 1,
             interval,
             channel,
             times: Arc::new(Mutex::new(times)),
@@ -70,7 +67,7 @@ impl Limit {
             let time_now = Time::now().num_milliseconds();
             // 如果当前时间与时间数组第一时间差大于限定时间段，并且当前时间与时间数组最后时间差大于最小请求间隔，则放行新的请求
             let mut times = self.times.lock().unwrap();
-            if time_now - times[0] > self.section && time_now - times[self.count_sub_1] > self.interval {
+            if time_now - times[0] > self.section && time_now - times[self.count] > self.interval {
                 // 发送一个元素，放行本次请求
                 self.channel.send(());
                 // 重置时间集合

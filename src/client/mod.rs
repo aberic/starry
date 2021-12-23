@@ -12,6 +12,6 @@
  * limitations under the License.
  */
 
-pub use client::HttpClient;
+// pub use client::HttpClient;
 
 mod client;

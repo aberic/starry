@@ -12,19 +12,20 @@
  * limitations under the License.
  */
 
-use std::io::Write;
-use std::net::{Shutdown, TcpListener, TcpStream, ToSocketAddrs};
+use std::io::{Error, Write};
+use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
 use std::sync::{Arc, RwLock};
 
 use log::LevelFilter;
 
 use crate::{Context, Request};
 use crate::Extend;
+use crate::http::url::authority::Addr;
 use crate::server::node::Root;
 use crate::server::Router;
 use crate::utils::{Channel, Time};
 use crate::utils::concurrent::{Thread, ThreadPool};
-use crate::utils::errors::StarryResult;
+use crate::utils::errors::{Errs, StarryResult};
 use crate::utils::log::LogModule;
 
 #[derive(Debug, Clone)]
@@ -35,6 +36,8 @@ pub struct HttpServer {
     pool_size: usize,
     /// 设置是否在接受的连接上启用`TCP keepalive`消息，单位ms。如果request启用，默认30000
     keepalive: i64,
+    /// 是否启用http压缩，如gzip、deflate等
+    compress: bool,
     /// 日志策略
     module: Option<LogModule>,
     root: Arc<RwLock<Root>>,
@@ -42,7 +45,7 @@ pub struct HttpServer {
 
 impl HttpServer {
     pub fn new() -> Self {
-        HttpServer { pool_size: 0, keepalive: 30000, module: None, root: Arc::new(RwLock::new(Root::new())) }
+        HttpServer { pool_size: 0, keepalive: 30000, compress: false, module: None, root: Arc::new(RwLock::new(Root::new())) }
     }
 
     /// 创建路由组
@@ -67,6 +70,10 @@ impl HttpServer {
 
     pub fn set_pool_size(&mut self, pool_size: usize) {
         self.pool_size = pool_size
+    }
+
+    pub fn set_compress(&mut self) {
+        self.compress = true
     }
 
     pub fn set_keepalive(&mut self, keepalive: i64) {
@@ -134,26 +141,52 @@ impl HttpServer {
         for tcp_stream_result in tcp_listener.incoming() {
             match tcp_stream_result {
                 Ok(tcp_stream) => {
+                    let peer;
+                    let local;
+                    match addrs(tcp_stream.peer_addr(), tcp_stream.local_addr()) {
+                        Ok((peer_a, local_a)) => {
+                            peer = peer_a;
+                            local = local_a;
+                        }
+                        Err(err) => {
+                            log::error!("tcp listener stream get addr failed! {}", err);
+                            continue;
+                        }
+                    }
                     let keepalive = self.keepalive;
                     let root = self.root.clone();
-                    match thread_pool.execute(move || handle_connection(tcp_stream, root, keepalive)) {
+                    let compress = self.compress;
+                    match thread_pool.execute(move || handle_connection(tcp_stream, root, keepalive, peer, local, compress)) {
                         Ok(()) => {}
-                        Err(err) => log::error!("thread pool execute tcp stream error, {}", err)
+                        Err(err) => log::error!("thread pool execute tcp stream failed! {}", err)
                     }
                 }
-                Err(err) => log::error!("tcp listener error, {}", err)
+                Err(err) => log::error!("tcp listener failed! {}", err)
             }
         }
         Ok(())
     }
 }
 
+/// 根据tcp stream匹配远端和本地addr
+fn addrs(peer_addr: Result<SocketAddr, Error>, local_addr: Result<SocketAddr, Error>) -> StarryResult<(Addr, Addr)> {
+    let peer;
+    match peer_addr {
+        Ok(addr) => peer = Addr::from(addr.ip().to_string(), addr.port()),
+        Err(err) => return Err(Errs::err(err))
+    }
+    match local_addr {
+        Ok(addr) => Ok((peer, Addr::from(addr.ip().to_string(), addr.port()))),
+        Err(err) => Err(Errs::err(err))
+    }
+}
+
 /// 针对本次stream进行处理
-fn handle_connection(tcp_stream: TcpStream, root: Arc<RwLock<Root>>, mut keepalive: i64) {
+fn handle_connection(tcp_stream: TcpStream, root: Arc<RwLock<Root>>, mut keepalive: i64, peer: Addr, local: Addr, compress: bool) {
     log::trace!("handle_connection");
     match tcp_stream.try_clone() {
         Ok(src) => {
-            let (close, shutdown) = exec_stream(src, root.clone());
+            let (close, shutdown) = exec_stream(src, root.clone(), peer.clone(), local.clone(), compress);
             if shutdown { // 如果连接关闭，直接返回
                 return;
             }
@@ -163,7 +196,7 @@ fn handle_connection(tcp_stream: TcpStream, root: Arc<RwLock<Root>>, mut keepali
             match tcp_stream.try_clone() {
                 Ok(src) => {
                     // 双线异步循环执行超时检查和stream解析
-                    loop_exec(src, root.clone(), keepalive)
+                    loop_exec(src, root.clone(), keepalive, peer, local, compress)
                 }
                 Err(err) => log::error!("request tcp stream clone in handle connection 1 failed! {}", err.to_string())
             }
@@ -176,13 +209,13 @@ fn handle_connection(tcp_stream: TcpStream, root: Arc<RwLock<Root>>, mut keepali
 ///
 /// * 是否关闭连接
 /// * 是否关闭连接
-fn exec_stream(tcp_stream: TcpStream, root: Arc<RwLock<Root>>) -> (bool, bool) {
-    match Request::from(tcp_stream, root.clone()) {
+fn exec_stream(tcp_stream: TcpStream, root: Arc<RwLock<Root>>, peer: Addr, local: Addr, compress: bool) -> (bool, bool) {
+    match Request::from(tcp_stream, root.clone(), peer, local) {
         // request分预解析和解析两个过程，预解析用于判断请求有效性，如无效，则放弃后续解析操作
         Ok((request, node, fields)) => {
             let close = request.close;
             log::debug!("method = {}, path = {}, from = {}", request.method(), request.path(), request.client());
-            let mut context = Box::new(Context::new(request, fields));
+            let mut context = Box::new(Context::new(request, fields, compress));
             log::trace!("context = {:#?}", context);
             match node.extend.clone() {
                 Some(extend) => extend.exec(context.as_mut()), // 扩展执行，自我诊断
@@ -205,14 +238,15 @@ fn exec_stream(tcp_stream: TcpStream, root: Arc<RwLock<Root>>) -> (bool, bool) {
 }
 
 /// 双线异步循环执行超时检查和stream解析
-fn loop_exec(mut tcp_stream: TcpStream, root: Arc<RwLock<Root>>, keepalive: i64) {
+fn loop_exec(mut tcp_stream: TcpStream, root: Arc<RwLock<Root>>, keepalive: i64, peer: Addr, local: Addr, compress: bool) {
     // 创建一个可以将stream接收信号同步更新至检查超时线程的通道
     let channel = Arc::new(Channel::unbounded());
     match tcp_stream.try_clone() {
         Ok(src) => {
             let channel = channel.clone();
+            let peer = peer.clone();
             // 新启线程检查当前stream是否超时
-            match Thread::spawn(move || check_keepalive(src, keepalive, channel)) {
+            match Thread::spawn(move || check_keepalive(src, keepalive, channel, peer)) {
                 Ok(_) => {}
                 Err(err) => {
                     log::error!("loop exec check stream failed! {}", err.to_string());
@@ -232,7 +266,7 @@ fn loop_exec(mut tcp_stream: TcpStream, root: Arc<RwLock<Root>>, keepalive: i64)
     loop {
         match tcp_stream.try_clone() {
             Ok(src) => {
-                let (_, shutdown) = exec_stream(src, root.clone());
+                let (_, shutdown) = exec_stream(src, root.clone(), peer.clone(), local.clone(), compress);
                 if shutdown { // 如果连接关闭，直接返回
                     channel.send(Check::Break);
                     return;
@@ -247,7 +281,7 @@ fn loop_exec(mut tcp_stream: TcpStream, root: Arc<RwLock<Root>>, keepalive: i64)
 }
 
 /// 检查当前stream是否超时
-fn check_keepalive(tcp_stream: TcpStream, keepalive: i64, channel: Arc<Channel<Check>>) {
+fn check_keepalive(tcp_stream: TcpStream, keepalive: i64, channel: Arc<Channel<Check>>, peer: Addr) {
     let mut time = Time::now();
     time.add_milliseconds(keepalive);
     let mut expect_time = time.num_milliseconds();
@@ -270,10 +304,10 @@ fn check_keepalive(tcp_stream: TcpStream, keepalive: i64, channel: Arc<Channel<C
             }
         }
     }
-    log::debug!("check stream {} shutdown!", tcp_stream.peer_addr().unwrap().to_string());
+    log::debug!("check stream {} shutdown!", peer.to_string());
     match tcp_stream.shutdown(Shutdown::Both) {
-        Ok(_) => log::trace!("tcp stream shutdown success!"),
-        Err(err) => log::error!("tcp stream shutdown failed! {}", err.to_string())
+        Ok(_) => log::trace!("tcp stream {} shutdown success!", peer.to_string()),
+        Err(err) => log::error!("tcp stream {} shutdown failed! {}", peer.to_string(), err.to_string())
     }
 }
 

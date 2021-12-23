@@ -13,9 +13,14 @@
  */
 
 use bytes::Bytes;
+use flate2::Compression;
 
-use crate::{ContentType, Cookie, Header, Status, Version};
+use crate::{Status, Version};
+use crate::header::AcceptEncoding;
 use crate::http::body::Body;
+use crate::http::header::{ContentType, Cookie};
+use crate::http::header::Header;
+use crate::utils::Compress;
 use crate::utils::errors::StarryResult;
 
 /// Response 表示由服务器响应客户端发送的HTTP请求。
@@ -41,14 +46,8 @@ pub struct Response {
     pub(crate) status: Status,
     pub(crate) header: Header,
     pub(crate) body: Body,
-    /// ContentLength 记录相关内容的长度。
-    ///
-    /// -1表示长度未知。
-    ///
-    /// 除非请求方法为"HEAD"，value >= 0 表示可以从Body中读取给定的字节数。
-    pub(crate) content_length: usize,
-    /// Close 记录头是否指示在读取Body后关闭连接。
-    pub(crate) close: bool,
+    /// 是否启用http压缩，如gzip、deflate等
+    compress: bool,
 }
 
 /// 组合方法集
@@ -60,6 +59,7 @@ impl Response {
     pub fn add_header_str(&mut self, k: &str, v: &str) {
         self.header.add_str(k, v)
     }
+
     pub fn set_header(&mut self, k: String, v: String) {
         self.header.set(k, v)
     }
@@ -81,37 +81,117 @@ impl Response {
         self.header.read_set_cookies()
     }
 
-    pub fn write(&mut self, body: Vec<u8>) {
-        self.content_length = body.len();
-        self.header.set_content_length(self.content_length);
-        self.header.set_content_type(ContentType::TEXT_PLAIN);
-        self.body.write(body)
-    }
-
-    pub fn write_slice(&mut self, body: &'static [u8]) {
-        self.content_length = body.len();
-        self.header.set_content_length(self.content_length);
-        self.header.set_content_type(ContentType::TEXT_PLAIN);
-        self.body.write_bytes(body)
-    }
-
-    pub fn write_type(&mut self, body: Vec<u8>, content_type: ContentType) {
-        self.content_length = body.len();
-        self.header.set_content_length(self.content_length);
+    fn set_this_encode(&mut self, content_length: usize, content_type: ContentType, accept_encoding: AcceptEncoding) {
+        self.header.set_content_length(content_length);
         self.header.set_content_type(content_type);
-        self.body.write(body)
+        self.header.set_accept_encoding(accept_encoding)
     }
 
-    pub fn write_slice_type(&mut self, body: &'static [u8], content_type: ContentType) {
-        self.content_length = body.len();
-        self.header.set_content_length(self.content_length);
+    fn set_this(&mut self, content_length: usize, content_type: ContentType) {
+        self.header.set_content_length(content_length);
         self.header.set_content_type(content_type);
-        self.body.write_bytes(body)
+    }
+
+    pub fn write_type(&mut self, body: Vec<u8>, content_type: ContentType, accept_encoding: AcceptEncoding) {
+        if !self.compress {
+            self.set_this(body.len(), content_type);
+            self.body.write(body);
+            return
+        }
+        let data;
+        match accept_encoding {
+            AcceptEncoding::GZip => match Compress::gzip(body.as_slice(), Compression::default()) {
+                Ok(src) => {
+                    data = src;
+                    self.set_this_encode(data.len(), content_type, accept_encoding);
+                }
+                Err(_) => {
+                    data = body;
+                    self.set_this(data.len(), content_type);
+                }
+            }
+            AcceptEncoding::Deflate => match Compress::deflate(body.as_slice(), Compression::default()) {
+                Ok(src) => {
+                    data = src;
+                    self.set_this_encode(data.len(), content_type, accept_encoding);
+                }
+                Err(_) => {
+                    data = body;
+                    self.set_this(data.len(), content_type);
+                }
+            }
+            AcceptEncoding::ZLib => match Compress::zlib(body.as_slice(), Compression::default()) {
+                Ok(src) => {
+                    data = src;
+                    self.set_this_encode(data.len(), content_type, accept_encoding);
+                }
+                Err(_) => {
+                    data = body;
+                    self.set_this(data.len(), content_type);
+                }
+            }
+            _ => {
+                data = body;
+                self.set_this(data.len(), content_type);
+            }
+        }
+        self.body.write(data)
+    }
+
+    pub fn write(&mut self, body: Vec<u8>, accept_encoding: AcceptEncoding) {
+        self.write_type(body, ContentType::TEXT_PLAIN, accept_encoding)
+    }
+
+    pub fn write_slice_type(&mut self, body: &'static [u8], content_type: ContentType, accept_encoding: AcceptEncoding) {
+        if !self.compress {
+            self.set_this(body.len(), content_type);
+            self.body.write_bytes(body);
+            return
+        }
+        match accept_encoding {
+            AcceptEncoding::GZip => match Compress::gzip(body, Compression::default()) {
+                Ok(src) => {
+                    self.set_this_encode(src.len(), content_type, accept_encoding);
+                    self.body.write(src)
+                }
+                Err(_) => {
+                    self.set_this(body.len(), content_type);
+                    self.body.write_bytes(body)
+                }
+            }
+            AcceptEncoding::Deflate => match Compress::deflate(body, Compression::default()) {
+                Ok(src) => {
+                    self.set_this_encode(src.len(), content_type, accept_encoding);
+                    self.body.write(src)
+                }
+                Err(_) => {
+                    self.set_this(body.len(), content_type);
+                    self.body.write_bytes(body)
+                }
+            }
+            AcceptEncoding::ZLib => match Compress::zlib(body, Compression::default()) {
+                Ok(src) => {
+                    self.set_this_encode(src.len(), content_type, accept_encoding);
+                    self.body.write(src)
+                }
+                Err(_) => {
+                    self.set_this(body.len(), content_type);
+                    self.body.write_bytes(body)
+                }
+            }
+            _ => {
+                self.set_this(body.len(), content_type);
+                self.body.write_bytes(body)
+            }
+        }
+    }
+
+    pub fn write_slice(&mut self, body: &'static [u8], accept_encoding: AcceptEncoding) {
+        self.write_slice_type(body, ContentType::TEXT_PLAIN, accept_encoding)
     }
 
     /// 返回已写入数据，该操作会清空已写入数据
     pub(crate) fn get_write_content(&mut self) -> Bytes {
-        self.content_length = 0;
         self.header.del_content_length();
         self.header.del_content_type();
         self.body.get_write_content()
@@ -120,16 +200,15 @@ impl Response {
 
 /// 输出方法集
 impl Response {
-    pub(crate) fn new(version: Version, connection: bool) -> Self {
+    pub(crate) fn new(version: Version, connection: bool, compress: bool) -> Self {
         let mut resp = Response {
             version,
             status: Status::OK,
             header: Header::new(),
             body: Default::default(),
-            content_length: 0,
-            close: !connection,
+            compress,
         };
-        resp.write(vec![]);
+        resp.write(vec![], AcceptEncoding::None);
         if connection {
             resp.header.set_connection();
         }
@@ -229,18 +308,22 @@ fn fill(status: Status) -> Response {
         status,
         header: Header::new(),
         body: Default::default(),
-        content_length: 0,
-        close: true,
+        compress: false,
     }
 }
 
 #[cfg(test)]
 mod response_test {
     use std::ops::Add;
+    use bytes::Bytes;
 
     use crate::Response;
 
     impl Response {
+        fn bytes(&mut self) -> Bytes {
+            self.body.get_write_content()
+        }
+
         fn string(&mut self) -> String {
             String::from_utf8_lossy(self.bytes().as_slice()).to_string()
         }

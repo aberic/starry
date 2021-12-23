@@ -234,7 +234,7 @@ impl fmt::Debug for ContentType {
 
 #[cfg(test)]
 mod content_type_test {
-    use crate::ContentType;
+    use crate::header::ContentType;
 
     #[test]
     fn test1() {

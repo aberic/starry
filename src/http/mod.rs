@@ -18,7 +18,6 @@ pub mod url;
 pub mod version;
 pub mod values;
 pub mod response;
-pub mod content_type;
 pub mod status;
-pub mod cookie;
 pub mod body;
+pub mod header;

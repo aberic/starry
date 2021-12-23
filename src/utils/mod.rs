@@ -12,6 +12,7 @@
  * limitations under the License.
  */
 pub(crate) use channel::Channel;
+pub use compress::Compress;
 pub(crate) use strings::Strings;
 pub use time::Time;
 
@@ -22,3 +23,4 @@ mod time;
 pub mod concurrent;
 pub mod log;
 mod channel;
+mod compress;

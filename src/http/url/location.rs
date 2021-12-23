@@ -127,8 +127,8 @@ impl Location {
     }
 }
 
-impl fmt::Debug for Location {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl ToString for Location {
+    fn to_string(&self) -> String {
         let path;
         match self.path.as_str() {
             "/" => path = String::new(),
@@ -145,6 +145,12 @@ impl fmt::Debug for Location {
                 None => data = path
             },
         }
-        f.write_str(&data)
+        data
+    }
+}
+
+impl fmt::Debug for Location {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.to_string())
     }
 }

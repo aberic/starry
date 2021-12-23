@@ -12,7 +12,7 @@
  * limitations under the License.
  */
 
-pub struct HttpClient {
-
-}
+// pub struct HttpClient {
+//
+// }
 

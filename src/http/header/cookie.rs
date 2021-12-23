@@ -20,7 +20,7 @@ pub struct Cookie {
     /// cookie的名称
     pub(crate) name: String,
     /// cookie的值
-    value: String,
+    pub(crate) value: String,
     /// 可以访问此cookie的页面路径
     path: Option<String>,
     /// 可以访问此cookie的域名
@@ -170,7 +170,7 @@ impl Cookie {
                                 cookie.name = key;
                                 cookie.value = parts[1].to_string();
                             } else {
-                                continue
+                                continue;
                             }
                         }
                     }
@@ -427,7 +427,8 @@ pub enum SameSite {
 
 #[cfg(test)]
 mod cookie_test {
-    use crate::{Cookie, CookieBuilder, Response};
+    use crate::header::{Cookie, CookieBuilder};
+    use crate::Response;
     use crate::utils::Time;
 
     #[test]
