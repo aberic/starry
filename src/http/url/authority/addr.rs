@@ -13,7 +13,10 @@
  */
 
 use std::fmt::{Display, Formatter};
+use std::net::{SocketAddr, ToSocketAddrs};
 use std::ops::Add;
+
+use crate::utils::errors::{Errs, StarryResult};
 
 /// Addr类型是URL的服务器资源细节的不可变封装。
 ///
@@ -43,7 +46,7 @@ impl Addr {
     }
 
     /// 通过已知参数获取Addr
-    pub fn new(host: String) -> Addr {
+    pub(crate) fn new(host: String) -> Addr {
         Addr { host, port: 80 }
     }
 
@@ -55,6 +58,14 @@ impl Addr {
     /// 字符串返回标准形式的“host:port”的Addr
     pub(crate) fn to_string(&self) -> String {
         self.host.clone().add(":").add(self.port.to_string().as_str())
+    }
+
+    pub(crate) fn socket_addr(&self) -> StarryResult<SocketAddr> {
+        let addr_string = self.to_string();
+        match addr_string.to_socket_addrs() {
+            Ok(src) => Ok(src.as_ref()[0]),
+            Err(err) => Err(Errs::strings(format!("{} trans to socket failed!", addr_string), err))
+        }
     }
 }
 
@@ -89,6 +100,15 @@ mod addr_test {
 
         let a = Addr::from(String::from("127.0.0.1"), 8888);
         assert_eq!(a.to_string(), String::from("127.0.0.1:8888"));
+    }
+
+    #[test]
+    fn to_socket() {
+        let addr = Addr::new("localhost".to_string());
+        assert_eq!("[::1]:80", addr.socket_addr().unwrap().to_string(), "addr = {}", addr);
+
+        let addr = Addr::new("127.0.0.1".to_string());
+        assert_eq!("127.0.0.1:80", addr.socket_addr().unwrap().to_string(), "addr = {}", addr);
     }
 }
 

@@ -12,9 +12,12 @@
  * limitations under the License.
  */
 
+pub use http::header;
+pub use http::header::content_type::Inner;
 pub use http::header::Header;
 pub use http::method::Method;
 pub use http::request::Request;
+pub use http::requester::Requester;
 pub use http::response::Response;
 pub use http::status::Status;
 pub use http::url::URL;
@@ -25,8 +28,6 @@ pub use server::Context;
 pub use server::Extend;
 pub use server::HttpServer;
 pub use server::limit::Limit;
-pub use http::header::content_type::Inner;
-pub use http::header;
 
 mod server;
 mod http;

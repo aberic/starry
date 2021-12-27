@@ -98,12 +98,19 @@ impl Response {
             self.body.write(body);
             return
         }
+        let body_size = body.len();
         let data;
         match accept_encoding {
             AcceptEncoding::GZip => match Compress::gzip(body.as_slice(), Compression::default()) {
                 Ok(src) => {
-                    data = src;
-                    self.set_this_encode(data.len(), content_type, accept_encoding);
+                    let src_size = src.len();
+                    if src_size > body_size {
+                        data = body;
+                        self.set_this(body_size, content_type);
+                    } else {
+                        data = src;
+                        self.set_this_encode(src_size, content_type, accept_encoding);
+                    }
                 }
                 Err(_) => {
                     data = body;
@@ -112,8 +119,14 @@ impl Response {
             }
             AcceptEncoding::Deflate => match Compress::deflate(body.as_slice(), Compression::default()) {
                 Ok(src) => {
-                    data = src;
-                    self.set_this_encode(data.len(), content_type, accept_encoding);
+                    let src_size = src.len();
+                    if src_size > body_size {
+                        data = body;
+                        self.set_this(body_size, content_type);
+                    } else {
+                        data = src;
+                        self.set_this_encode(src_size, content_type, accept_encoding);
+                    }
                 }
                 Err(_) => {
                     data = body;
@@ -122,8 +135,14 @@ impl Response {
             }
             AcceptEncoding::ZLib => match Compress::zlib(body.as_slice(), Compression::default()) {
                 Ok(src) => {
-                    data = src;
-                    self.set_this_encode(data.len(), content_type, accept_encoding);
+                    let src_size = src.len();
+                    if src_size > body_size {
+                        data = body;
+                        self.set_this(body_size, content_type);
+                    } else {
+                        data = src;
+                        self.set_this_encode(src_size, content_type, accept_encoding);
+                    }
                 }
                 Err(_) => {
                     data = body;
@@ -315,15 +334,10 @@ fn fill(status: Status) -> Response {
 #[cfg(test)]
 mod response_test {
     use std::ops::Add;
-    use bytes::Bytes;
 
     use crate::Response;
 
     impl Response {
-        fn bytes(&mut self) -> Bytes {
-            self.body.get_write_content()
-        }
-
         fn string(&mut self) -> String {
             String::from_utf8_lossy(self.bytes().as_slice()).to_string()
         }

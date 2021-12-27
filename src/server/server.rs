@@ -18,7 +18,7 @@ use std::sync::{Arc, RwLock};
 
 use log::LevelFilter;
 
-use crate::{Context, Request};
+use crate::{Context, Requester};
 use crate::Extend;
 use crate::http::url::authority::Addr;
 use crate::server::node::Root;
@@ -210,12 +210,12 @@ fn handle_connection(tcp_stream: TcpStream, root: Arc<RwLock<Root>>, mut keepali
 /// * 是否关闭连接
 /// * 是否关闭连接
 fn exec_stream(tcp_stream: TcpStream, root: Arc<RwLock<Root>>, peer: Addr, local: Addr, compress: bool) -> (bool, bool) {
-    match Request::from(tcp_stream, root.clone(), peer, local) {
+    match Requester::from(tcp_stream, root.clone(), peer, local) {
         // request分预解析和解析两个过程，预解析用于判断请求有效性，如无效，则放弃后续解析操作
-        Ok((request, node, fields)) => {
-            let close = request.close;
-            log::debug!("method = {}, path = {}, from = {}", request.method(), request.path(), request.client());
-            let mut context = Box::new(Context::new(request, fields, compress));
+        Ok((requester, node, fields)) => {
+            let close = requester.request.close;
+            log::debug!("method = {}, path = {}, from = {}", requester.method(), requester.path(), requester.client());
+            let mut context = Box::new(Context::new(requester, fields, compress));
             log::trace!("context = {:#?}", context);
             match node.extend.clone() {
                 Some(extend) => extend.exec(context.as_mut()), // 扩展执行，自我诊断

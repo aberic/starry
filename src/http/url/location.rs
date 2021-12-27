@@ -55,7 +55,7 @@ impl Location {
         self.fragment.clone()
     }
 
-    // path/data?key=value&key2=value2#test
+    // /path/test/test1/hello/world?key=value&key2=value2\r
     pub(crate) fn from_bytes(src: Vec<u8>) -> Location {
         let mut step = 1; // 1:path -> 2:query -> 3:fragment
         let mut data: Vec<u8> = vec![];
@@ -152,5 +152,18 @@ impl ToString for Location {
 impl fmt::Debug for Location {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.to_string())
+    }
+}
+
+#[cfg(test)]
+mod location_test {
+    use crate::http::url::Location;
+
+    #[test]
+    fn location_trans() {
+        let bs = b"/path/data?key1=value1&key2=value2\r";
+        let location = Location::from_bytes(bs.to_vec());
+        assert_eq!("/path/data?key2=value2&key1=value1", location.to_string(), "location = {}", location.to_string());
+        assert_eq!("key2=value2&key1=value1", location.query_string().unwrap(), "query_string = {:#?}", location.query_string());
     }
 }

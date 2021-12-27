@@ -24,6 +24,7 @@ use starry::header::Cookie;
 fn main() {
     let mut server = HttpServer::new();
     server.set_log(LevelFilter::Trace, "tmp".to_string(), 1024, 7);
+    server.set_compress();
     router1(server.clone());
     router2(server.clone());
     let addr = "0.0.0.0:7878";
@@ -72,7 +73,7 @@ fn h11(context: &mut Context) {
     context.resp_set_header_str("x", "y");
     context.resp_add_cookie(Cookie::new("hello".to_string(), "world".to_string()));
     context.resp_add_cookie(Cookie::new("starry".to_string(), "http".to_string()));
-    context.resp_body("test http response body 是否有效！".to_string().into_bytes());
+    context.resp_body("test http response body whether valid！".to_string().into_bytes());
     println!("h11");
     println!("a = {}", context.req_field("a").unwrap());
     println!("b = {}", context.req_field("b").unwrap());

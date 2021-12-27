@@ -38,7 +38,7 @@ pub struct URL {
 }
 
 impl URL {
-    pub fn default() -> URL {
+    pub(crate) fn default() -> URL {
         URL{
             scheme: Scheme::HTTP,
             authority: Authority::new(None, Addr::new(String::new())),
@@ -46,15 +46,23 @@ impl URL {
         }
     }
 
-    pub fn scheme(&self) -> Scheme {
+    pub(crate) fn new(addr: Addr) -> URL {
+        URL{
+            scheme: Scheme::HTTP,
+            authority: Authority::new(None, addr),
+            location: Location::new()
+        }
+    }
+
+    pub(crate) fn scheme(&self) -> Scheme {
         self.scheme.clone()
     }
 
-    pub fn authority(&self) -> Authority {
+    pub(crate) fn authority(&self) -> Authority {
         self.authority.clone()
     }
 
-    pub fn location(&self) -> Location {
+    pub(crate) fn location(&self) -> Location {
         self.location.clone()
     }
 

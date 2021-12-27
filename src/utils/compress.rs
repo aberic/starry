@@ -92,15 +92,14 @@ mod compress_test {
     use flate2::Compression;
     use crate::utils::compress::Compress;
 
-    const DD: &str = "foobar!foobar!foobar!foobar!foobar!foobar!foobar!foobar!foobar!foobar!";
+    const DD: &str = "test http response body whether valid!";
 
     #[test]
     fn zlib_test() {
         let data = DD.as_bytes();
         let res = Compress::zlib(data, Compression::default()).unwrap();
         let data_bak = Compress::un_zlib(res.as_slice()).unwrap();
-        assert!(data.len() > res.len());
-        assert_eq!(String::from_utf8(data_bak).unwrap(), "foobar!foobar!foobar!foobar!foobar!foobar!foobar!foobar!foobar!foobar!");
+        assert_eq!(String::from_utf8(data_bak).unwrap(), "test http response body whether valid!", "data.len() = {}, res.len() = {}", data.len(), res.len());
     }
 
     #[test]
@@ -108,8 +107,7 @@ mod compress_test {
         let data = DD.as_bytes();
         let res = Compress::deflate(data, Compression::default()).unwrap();
         let data_bak = Compress::un_deflate(res.as_slice()).unwrap();
-        assert!(data.len() > res.len());
-        assert_eq!(String::from_utf8(data_bak).unwrap(), "foobar!foobar!foobar!foobar!foobar!foobar!foobar!foobar!foobar!foobar!");
+        assert_eq!(String::from_utf8(data_bak).unwrap(), "test http response body whether valid!", "data.len() = {}, res.len() = {}", data.len(), res.len());
     }
 
     #[test]
@@ -117,8 +115,7 @@ mod compress_test {
         let data = DD.as_bytes();
         let res = Compress::gzip(data, Compression::default()).unwrap();
         let data_bak = Compress::un_gzip(res.as_slice()).unwrap();
-        assert!(data.len() > res.len());
-        assert_eq!(String::from_utf8(data_bak).unwrap(), "foobar!foobar!foobar!foobar!foobar!foobar!foobar!foobar!foobar!foobar!");
+        assert_eq!(String::from_utf8(data_bak).unwrap(), "test http response body whether valid!", "data.len() = {}, res.len() = {}", data.len(), res.len());
     }
 }
 

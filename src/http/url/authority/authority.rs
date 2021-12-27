@@ -34,7 +34,7 @@ pub struct Authority {
     /// Userinfo类型是URL的用户名和密码细节的不可变封装。
     userinfo: Option<Userinfo>,
     /// Addr类型是URL的服务器资源细节的不可变封装。
-    addr: Addr,
+    pub(crate) addr: Addr,
 }
 
 impl Authority {

@@ -17,7 +17,7 @@ use std::collections::HashMap;
 use std::hash::Hash;
 use std::net::TcpStream;
 
-use crate::{Header, Request, Response, Status, Version};
+use crate::{Header, Response, Status, Version, Requester};
 use crate::http::header::{ContentType, Cookie};
 use crate::http::url::authority::{Addr, Userinfo};
 use crate::http::values::FileHeader;
@@ -25,7 +25,7 @@ use crate::utils::errors::StarryResult;
 
 #[derive(Debug)]
 pub struct Context {
-    request: Request<TcpStream>,
+    requester: Requester<TcpStream>,
     response: Response,
     fields: HashMap<String, String>,
     /// 是否已经执行过response方法
@@ -34,10 +34,10 @@ pub struct Context {
 
 /// request相关
 impl Context {
-    pub(crate) fn new(request: Request<TcpStream>, fields: HashMap<String, String>, compress: bool) -> Self {
-        let version = request.version();
-        let connection = !request.close;
-        Context { request, response: Response::new(version, connection, compress), fields, executed: false }
+    pub(crate) fn new(requester: Requester<TcpStream>, fields: HashMap<String, String>, compress: bool) -> Self {
+        let version = requester.version();
+        let connection = !requester.request.close;
+        Context { requester, response: Response::new(version, connection, compress), fields, executed: false }
     }
 
     // pub fn get_request(&self) -> StarryResult<Request> {
@@ -45,26 +45,26 @@ impl Context {
     // }
 
     pub fn req_header(&self) -> Header {
-        self.request.header()
+        self.requester.header()
     }
 
     pub fn req_header_get<K: ?Sized>(&self, k: &K) -> Option<String> where
         K: Borrow<K>,
         K: Hash + Eq,
         String: Borrow<K>, {
-        self.request.header_get(k)
+        self.requester.header_get(k)
     }
 
     pub fn req_userinfo(&self) -> Option<Userinfo> {
-        self.request.url.authority.userinfo()
+        self.requester.userinfo()
     }
 
     pub fn req_path(&self) -> String {
-        self.request.url.location.path()
+        self.requester.path()
     }
 
     pub fn req_client_addr(&self) -> Addr {
-        self.request.url.authority.addr()
+        self.requester.addr()
     }
 
     /// 如果请求头指示客户端正在发起websocket握手，则IsWebsocket返回true
@@ -94,11 +94,11 @@ impl Context {
     }
 
     pub fn req_cookies(&self) -> Vec<Cookie> {
-        self.request.cookies()
+        self.requester.cookies()
     }
 
     pub fn req_cookie_get(&self, cookie_name: &str) -> Option<Cookie> {
-        self.request.cookie_get(cookie_name)
+        self.requester.cookie_get(cookie_name)
     }
 
     /// 返回对应于请求表单中定义参数值的引用。
@@ -106,7 +106,7 @@ impl Context {
         K: Borrow<K>,
         K: Hash + Eq,
         String: Borrow<K>, {
-        self.request.form_value(k)
+        self.requester.form_value(k)
     }
 
     /// 返回对应于请求表单中定义的参数存在性。
@@ -114,12 +114,12 @@ impl Context {
         K: Borrow<K>,
         K: Hash + Eq,
         String: Borrow<K>, {
-        self.request.have_form_value(k)
+        self.requester.have_form_value(k)
     }
 
     /// 请求表单中定义的参数数量
     pub fn req_count_form(&mut self) -> StarryResult<usize> {
-        self.request.count_form_value()
+        self.requester.count_form_value()
     }
 
     /// 返回对应于URI请求参数中定义参数值的引用。
@@ -127,7 +127,7 @@ impl Context {
         K: Borrow<K>,
         K: Hash + Eq,
         String: Borrow<K>, {
-        self.request.param_value(k)
+        self.requester.param_value(k)
     }
 
     /// 返回对应于URI请求参数中定义的参数存在性。
@@ -135,12 +135,12 @@ impl Context {
         K: Borrow<K>,
         K: Hash + Eq,
         String: Borrow<K>, {
-        self.request.have_param_value(k)
+        self.requester.have_param_value(k)
     }
 
     /// URI请求参数中定义的参数数量
     pub fn req_count_param(&self) -> usize {
-        self.request.count_param_value()
+        self.requester.count_param_value()
     }
 
     /// 返回对应于URI资源路径中定义参数值的引用。
@@ -176,7 +176,7 @@ impl Context {
         K: Borrow<K>,
         K: Hash + Eq,
         String: Borrow<K>, {
-        Ok(self.request.multipart_form()?.get(k))
+        Ok(self.requester.multipart_form()?.get(k))
     }
 }
 
@@ -219,24 +219,24 @@ impl Context {
     }
 
     pub fn resp_body(&mut self, body: Vec<u8>) {
-        self.response.write(body, self.request.accept_encoding.clone())
+        self.response.write(body, self.requester.accept_encoding())
     }
 
     pub fn resp_body_slice(&mut self, body: &'static [u8]) {
-        self.response.write_slice(body, self.request.accept_encoding.clone())
+        self.response.write_slice(body, self.requester.accept_encoding())
     }
 
     pub fn resp_bodies(&mut self, body: Vec<u8>, content_type: ContentType) {
-        self.response.write_type(body, content_type, self.request.accept_encoding.clone())
+        self.response.write_type(body, content_type, self.requester.accept_encoding())
     }
 
     pub fn resp_body_slices(&mut self, body: &'static [u8], content_type: ContentType) {
-        self.response.write_slice_type(body, content_type, self.request.accept_encoding.clone())
+        self.response.write_slice_type(body, content_type, self.requester.accept_encoding())
     }
 
     pub fn response(&mut self) {
         self.executed = true;
-        match self.request.response(self.response.clone()) {
+        match self.requester.response(self.response.clone()) {
             Ok(()) => {}
             Err(err) => log::error!("response failed! {}", err)
         }

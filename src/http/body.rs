@@ -41,11 +41,6 @@ impl Body {
         }
     }
 
-    /// 仅对body.reader操作
-    pub(crate) fn len(&self) -> usize {
-        self.reader.len()
-    }
-
     pub(crate) fn write(&mut self, src: Vec<u8>) {
         self.writer = Bytes::from(src)
     }

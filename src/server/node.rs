@@ -20,6 +20,7 @@ use crate::server::Extend;
 use crate::server::router::Handler;
 use crate::utils::concurrent::Thread;
 
+/// 资源树根结点
 #[derive(Clone, Debug)]
 pub(crate) struct Root {
     pub(crate) root_option: Node,
