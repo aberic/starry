@@ -32,6 +32,8 @@ use crate::http::version::Protocol;
 use crate::server::node::{Node, Root};
 use crate::utils::errors::{Error, Errs, StarryResult};
 
+pub(crate) const SERVER_TCP_STREAM_HAD_NO_DATA: &str = "server request tcp stream had no data!";
+
 /// [`Request`]的封装
 ///
 /// [`Request`]: crate::Request
@@ -238,13 +240,15 @@ impl<Stream: Read + Write + Debug> Requester<Stream> {
     fn parse(&mut self, root: Arc<RwLock<Root>>, peer: Addr, local: Addr) -> StarryResult<(Node, HashMap<String, String>)> {
         let mut buffer = [0; 1024];
         let mut iter;
+        // 当前读取总长度
+        let mut count = 0;
         // 剩余待读取数据的总长度
         let mut size;
         match self.stream.read(&mut buffer) {
             Ok(src) => {
-                log::trace!("stream read size = {}", src);
+                log::trace!("request stream read size = {}", src);
                 if src == 0 { // 没有数据进入
-                    return Err(Errs::str("tcp stream had no data!"));
+                    return Err(Errs::str(SERVER_TCP_STREAM_HAD_NO_DATA));
                 }
                 size = src;
                 iter = buffer.iter()
@@ -255,9 +259,10 @@ impl<Stream: Read + Write + Debug> Requester<Stream> {
         }
 
         // 解析请求行信息 POST /path/data?key=value&key2=value2 HTTP/1.1
-        let (location, count) = self.parse_request_line(iter.borrow_mut())?;
+        let (location, len) = self.parse_request_line(iter.borrow_mut())?;
         // log::trace!("parse_request_line count = {}, method = {}, version = {}", count, self.method, self.version.to_string());
-        size -= count;
+        log::trace!("size = {}, len1 = {}", size, len);
+        count += len;
 
         let node;
         let fields;
@@ -274,11 +279,17 @@ impl<Stream: Read + Write + Debug> Requester<Stream> {
         }
 
         // 解析消息报头
-        let count = self.parse_request_header(iter.borrow_mut());
-        size -= count;
+        let len = self.parse_request_header(iter.borrow_mut());
+        log::trace!("size = {}, len2 = {}", size, len);
+        count += len;
 
         // 根据已知结果解析请求关联参数
         self.parse_others(location, peer, local)?;
+
+        if size < count {
+            return Ok((node, fields))
+        }
+        size -= count;
 
         // 读取请求正文
         // 当请求方法为 POST/PUT/PATCH 时需要读取到body中，其它方法没有实体，即便有，也会被丢弃掉
@@ -424,7 +435,7 @@ impl<Stream: Read + Write + Debug> Requester<Stream> {
                 Errs::strs("parse request failed, userinfo parse error!", err)))
         }
         self.request.set_client(peer);
-        self.request.set_url(URL::from(Scheme::HTTP, Authority::new(userinfo, local), location));
+        self.request.set_url(URL::new(Scheme::HTTP, Authority::new(userinfo, local), location));
         self.request.close = self.request.header.check_close(&self.request.version, false);
         match self.request.version() {
             Version::HTTP_10 | Version::HTTP_11 => match self.request.header.get_host() {
@@ -721,7 +732,7 @@ impl<Stream: Read + Write + Debug> Requester<Stream> {
             }
             Err(err) => return Err(self.interrupt(
                 Response::bad_request(),
-                Errs::strs("read failed while parse request with failed!", err)))
+                Errs::strs("reread failed while parse request with failed!", err)))
         }
     }
 }
@@ -730,6 +741,9 @@ impl<Stream: Read + Write + Debug> Requester<Stream> {
     /// 执行回复操作
     pub(crate) fn response(&mut self, mut response: Response) -> StarryResult<()> {
         log::debug!("response: {:#?}", response);
+
+        // let mut tmp = vec![];
+        // let _ = self.stream.read_to_end(&mut tmp).unwrap_or(0);
 
         // 状态行
         self.write(response.version.as_slice())?;
@@ -758,9 +772,9 @@ impl<Stream: Read + Write + Debug> Requester<Stream> {
         }
     }
 
-    fn write(&mut self, buf: &[u8]) -> StarryResult<usize> {
-        match self.stream.write(buf) {
-            Ok(src) => Ok(src),
+    fn write(&mut self, buf: &[u8]) -> StarryResult<()> {
+        match self.stream.write_all(buf) {
+            Ok(_) => Ok(()),
             Err(err) => Err(Errs::strs("stream write to response failed!", err)),
         }
     }

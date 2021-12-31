@@ -15,8 +15,9 @@
 use std::borrow::Borrow;
 use std::fmt::{Debug, Display, Formatter};
 use std::hash::Hash;
+use std::net::SocketAddr;
 
-use bytes::{BytesMut, Bytes};
+use bytes::{Bytes, BytesMut};
 
 use crate::{Method, URL, Values, Version};
 use crate::header::AcceptEncoding;
@@ -27,7 +28,6 @@ use crate::http::url::{Authority, Location, Scheme};
 use crate::http::url::authority::{Addr, Userinfo};
 use crate::http::values::MultipartValues;
 use crate::http::version::Protocol;
-use std::net::SocketAddr;
 use crate::utils::errors::StarryResult;
 
 // use crate::values::{MultipartValues, RequestValues};
@@ -135,17 +135,19 @@ impl Request {
     /// 通过读出流生成客户端Request
     ///
     /// * target 即将访问的服务端地址
-    pub(crate) fn new(method: Method, target: Addr) -> Request {
-        Request {
+    pub(crate) fn new(method: Method, url: &str) -> StarryResult<Request> {
+        let url = URL::from(url)?;
+        let host = url.authority.addr.to_string();
+        Ok(Request {
             method,
-            url: URL::new(target),
+            url,
             version: Default::default(),
             header: Header::new(),
             body: Default::default(),
             content_length: -1,
             accept_encoding: AcceptEncoding::None,
-            close: false,
-            host: String::new(),
+            close: true,
+            host,
             content_type: None,
             form_param: Values::new(),
             form: Values::new(),
@@ -153,7 +155,7 @@ impl Request {
             cookies: vec![],
             client: Default::default(),
             body_parse: false,
-        }
+        })
     }
 
     pub fn method(&self) -> Method {
@@ -355,7 +357,7 @@ impl Default for Request {
             body: Default::default(),
             content_length: -1,
             accept_encoding: AcceptEncoding::None,
-            close: false,
+            close: true,
             host: String::new(),
             content_type: None,
             form_param: Values::new(),
@@ -376,5 +378,17 @@ impl Display for Request {
                , self.method, self.url, self.version, self.header,
                self.body.to_string(), self.content_length, self.close,
                self.host, self.content_type, self.form_param, self.form, self.multipart_form)
+    }
+}
+
+#[cfg(test)]
+mod request_test {
+    use crate::http::url::Location;
+    use crate::{Request, Method};
+
+    #[test]
+    fn request_trans() {
+        let request = Request::new(Method::GET, "http://user:password@localhost:7878/path/test/test1/hello/world?key=value&key2=value2#fragid1").unwrap();
+        println!("request = {}", request);
     }
 }

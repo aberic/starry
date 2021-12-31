@@ -39,6 +39,10 @@ pub struct Userinfo {
 }
 
 impl Userinfo {
+    pub(crate) fn new(username: String, password: String) -> Self {
+        Self{ username, password }
+    }
+
     pub fn username(&self) -> String {
         self.username.clone()
     }

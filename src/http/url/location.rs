@@ -55,13 +55,14 @@ impl Location {
         self.fragment.clone()
     }
 
-    // /path/test/test1/hello/world?key=value&key2=value2\r
+    // /path/test/test1/hello/world?key=value&key2=value2#fragid1\r
     pub(crate) fn from_bytes(src: Vec<u8>) -> Location {
         let mut step = 1; // 1:path -> 2:query -> 3:fragment
         let mut data: Vec<u8> = vec![];
         let mut key: String = String::from("");
         let mut path: String = String::from("");
         let mut query = Values::new();
+        let mut fragment = None;
         for b in src {
             match b {
                 b'/' => {
@@ -94,18 +95,26 @@ impl Location {
                     key.clear();
                     data.clear()
                 }
+                b'#' => {
+                    query.set(key.clone(), String::from_utf8_lossy(&data).to_string());
+                    key.clear();
+                    data.clear();
+                    step = 3;
+                }
                 b'\r' => {
                     if step == 1 {
                         path = path + String::from_utf8_lossy(&data).as_ref();
                     } else if step == 2 {
                         query.set(key.clone(), String::from_utf8_lossy(&data).to_string());
+                    } else if step == 3 {
+                        fragment = Some(String::from_utf8_lossy(&data).to_string());
                     }
                     break
                 }
                 _ => data.push(b)
             }
         }
-        Location { path, query, fragment: None }
+        Location { path, query, fragment }
     }
 
     fn query_string(&self) -> Option<String> {
@@ -151,7 +160,13 @@ impl ToString for Location {
 
 impl fmt::Debug for Location {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.to_string())
+        // f.write_str(&self.to_string())
+        f.debug_struct("Location")
+            .field("to_string", &self.to_string())
+            .field("path", &self.path)
+            .field("query", &self.query_string())
+            .field("fragment", &self.fragment)
+            .finish()
     }
 }
 
@@ -163,7 +178,10 @@ mod location_test {
     fn location_trans() {
         let bs = b"/path/data?key1=value1&key2=value2\r";
         let location = Location::from_bytes(bs.to_vec());
-        assert_eq!("/path/data?key2=value2&key1=value1", location.to_string(), "location = {}", location.to_string());
-        assert_eq!("key2=value2&key1=value1", location.query_string().unwrap(), "query_string = {:#?}", location.query_string());
+        // assert_eq!("/path/data?key1=value1&key2=value2", location.to_string(), "location = {}", location.to_string());
+        // assert_eq!("key1=value1&key2=value2", location.query_string().unwrap(), "query_string = {:#?}", location.query_string());
+        assert_eq!("/path/data", location.path, "location = {}", location.to_string());
+        assert_eq!("value1", location.query.get("key1").unwrap(), "location = {}", location.to_string());
+        assert_eq!("value2", location.query.get("key2").unwrap(), "location = {}", location.to_string());
     }
 }

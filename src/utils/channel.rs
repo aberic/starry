@@ -37,14 +37,24 @@ impl<T> Channel<T> {
         Channel { tx, rx }
     }
 
+    /// 尝试在不阻塞的情况下将消息发送到信道。
+    /// 此方法将立即向通道发送消息，或者在通道已满或断开连接时返回错误。返回的错误包含原始消息。
+    /// 如果在零容量信道上调用，此方法将只在信道的另一边碰巧同时有接收操作时才发送消息。
+    pub(crate) fn try_send(&self, t: T) -> StarryResult<()> {
+        match self.tx.try_send(t) {
+            Ok(_) => Ok(()),
+            Err(err) => Err(Errs::string(err.to_string()))
+        }
+    }
+
     /// 阻塞当前线程，直到消息发送或通道断开。
     /// 如果通道已满且未断开，此调用将阻塞，直到发送操作可以继续。如果通道断开，这个调用将被唤醒并返回一个错误。
     /// 返回的错误包含原始消息。
     /// 如果在零容量信道上调用，此方法将等待接收操作出现在信道的另一边。
-    pub(crate) fn send(&self, t: T) {
+    pub(crate) fn send(&self, t: T) -> StarryResult<()> {
         match self.tx.send(t) {
-            Ok(_) => {}
-            Err(err) => log::error!("request limit fetch error! {}", err)
+            Ok(_) => Ok(()),
+            Err(err) => Err(Errs::string(err.to_string()))
         }
     }
 

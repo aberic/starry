@@ -69,10 +69,14 @@ impl Limit {
             let mut times = self.times.lock().unwrap();
             if time_now - times[0] > self.section && time_now - times[self.count] > self.interval {
                 // 发送一个元素，放行本次请求
-                self.channel.send(());
-                // 重置时间集合
-                times.remove(0);
-                times.push(time_now)
+                match self.channel.send(()) {
+                    Ok(_) => {
+                        // 重置时间集合
+                        times.remove(0);
+                        times.push(time_now)
+                    }
+                    Err(err) => log::error!("request limit fetch error! {}", err)
+                }
             }
         }
     }

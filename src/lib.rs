@@ -12,6 +12,10 @@
  * limitations under the License.
  */
 
+#[macro_use]
+extern crate lazy_static;
+
+pub use client::HttpClient;
 pub use http::header;
 pub use http::header::content_type::Inner;
 pub use http::header::Header;

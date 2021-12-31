@@ -11,40 +11,15 @@ edition = "2018"
 #autotests = false
 #autobenches = false
 
-[dependencies.log]
-version = "0"
-
-[dependencies.log4rs]
-version = "1"
-
-[dependencies.lazy_static]
-version = "1"
-
-[dependencies.once_cell]
-version = "1"
-
-[dependencies.openssl]
-version = "0"
-features = ["vendored"]
-
-[dependencies.hex]
-version = "0"
-
-[dependencies.chrono]
-version = "0"
-
-[dependencies.crossbeam]
-version = "0"
-
-[dependencies.num_cpus]
-version = "1"
-
-[dependencies.bytes]
-version = "1"
-features = ["serde"]
-
-[dependencies.flate2]
-version = "1"
-
-#[dependencies.bencher]
-#version = "*"
+[dependencies]
+log = "0"
+log4rs = "1"
+lazy_static = "1"
+once_cell = "1"
+openssl = { version = "0", features = ["vendored"] }
+hex = "0"
+chrono = "0"
+crossbeam = "0"
+num_cpus = "1"
+bytes = { version = "1", features = ["serde"] }
+flate2 = "1"

@@ -46,6 +46,10 @@ pub struct Response {
     pub(crate) status: Status,
     pub(crate) header: Header,
     pub(crate) body: Body,
+    /// Close 指在响应此请求后(对于服务器)还是在发送此请求并读取其响应后(对于客户端)关闭连接。
+    /// 对于服务器请求，HTTP服务器自动处理此字段，处理程序不需要此字段。
+    /// 对于客户端请求，设置此字段可以防止在请求到相同主机之间重用TCP连接。
+    pub(crate) close: bool,
     /// 是否启用http压缩，如gzip、deflate等
     compress: bool,
 }
@@ -225,6 +229,7 @@ impl Response {
             status: Status::OK,
             header: Header::new(),
             body: Default::default(),
+            close: true,
             compress,
         };
         resp.write(vec![], AcceptEncoding::None);
@@ -327,7 +332,21 @@ fn fill(status: Status) -> Response {
         status,
         header: Header::new(),
         body: Default::default(),
+        close: true,
         compress: false,
+    }
+}
+
+impl Default for Response {
+    fn default() -> Self {
+        Self {
+            version: Default::default(),
+            status: Status::BAD_REQUEST,
+            header: Header::new(),
+            body: Default::default(),
+            close: true,
+            compress: false
+        }
     }
 }
 
