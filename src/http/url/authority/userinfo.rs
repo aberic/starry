@@ -13,9 +13,10 @@
  */
 
 use crate::utils::cryptos::Base64;
-use crate::utils::cryptos::base64::Base64Decoder;
+use crate::utils::cryptos::base64::{Base64Decoder, Base64Encoder};
 use crate::utils::errors::{Errs, StarryResult};
 use crate::utils::Strings;
+use std::ops::Add;
 
 /// Userinfo类型是URL的用户名和密码细节的不可变封装。
 /// 现有的Userinfo值保证设置一个用户名(可能为空，这是[`RFC2396`]所允许的)和一个可选的密码。
@@ -51,6 +52,17 @@ impl Userinfo {
         self.password.clone()
     }
 
+    /// 字符串返回标准形式的“username:password”编码的用户信息。
+    fn to_string(&self) -> String {
+        self.username.clone().add(":").add(&self.password)
+    }
+
+    pub(crate) fn base64(&self) -> String {
+        let src = self.to_string();
+        let bytes = src.as_bytes();
+        Base64::encode(bytes)
+    }
+
     /// 通过已知参数获取Userinfo
     pub(crate) fn from_basic(mut authorization: String) -> StarryResult<Userinfo> {
         authorization = authorization[6..].to_string();
@@ -77,10 +89,7 @@ impl Userinfo {
 
 #[cfg(test)]
 mod userinfo_test {
-    use std::ops::Add;
     use crate::http::url::authority::Userinfo;
-    use crate::utils::cryptos::Base64;
-    use crate::utils::cryptos::base64::Base64Encoder;
 
     impl Userinfo {
         /// 通过已知参数获取Userinfo
@@ -91,17 +100,6 @@ mod userinfo_test {
         /// 通过已知参数获取Userinfo
         fn from_str(username: &str, password: &str) -> Userinfo {
             Userinfo { username: String::from(username), password: String::from(password) }
-        }
-
-        /// 字符串返回标准形式的“username:password”编码的用户信息。
-        fn to_string(&self) -> String {
-            self.username.clone().add(":").add(&self.password)
-        }
-
-        fn base64(&self) -> String {
-            let src = self.to_string();
-            let bytes = src.as_bytes();
-            Base64::encode(bytes)
         }
     }
 

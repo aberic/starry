@@ -32,7 +32,7 @@ use crate::http::url::authority::{Addr, Userinfo};
 #[derive(Clone, Debug)]
 pub struct Authority {
     /// Userinfo类型是URL的用户名和密码细节的不可变封装。
-    userinfo: Option<Userinfo>,
+    pub(crate) userinfo: Option<Userinfo>,
     /// Addr类型是URL的服务器资源细节的不可变封装。
     pub(crate) addr: Addr,
 }

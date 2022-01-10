@@ -47,14 +47,28 @@ impl HttpClient {
     }
 
     pub fn get(url: &str) -> StarryResult<Response> {
-        let request = Request::new(Method::GET, url)?;
+        let request = default_request(Method::GET, url)?;
         exec(request)
     }
 }
 
+fn default_request(method: Method, url: &str) -> StarryResult<Request> {
+    let mut request = Request::new(method, url)?;
+    request.header.set_str("Host", request.host.as_str());
+    match request.url.authority.userinfo() {
+        Some(src) => request.header.set_str("Authorization", format!("Basic {}", src.base64()).as_str()),
+        None => {}
+    }
+    if !request.close {
+        request.header.set_connection();
+    }
+    Ok(request)
+}
+
 /// 新建
 fn stream(request: Request) -> StarryResult<TcpStream> {
-    let addr = request.socket_addr()?;
+    let addr = request.socket_addr_ipv4()?;
+    log::trace!("request stream addr = {}", addr.to_string());
     match TcpStream::connect(addr) {
         Ok(stream) => Ok(stream),
         Err(err) => Err(Errs::strings(format!("client connect to {} failed!", addr.to_string()), err))

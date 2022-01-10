@@ -60,10 +60,32 @@ impl Addr {
         self.host.clone().add(":").add(self.port.to_string().as_str())
     }
 
-    pub(crate) fn socket_addr(&self) -> StarryResult<SocketAddr> {
+    pub(crate) fn socket_addr_ipv4(&self) -> StarryResult<SocketAddr> {
         let addr_string = self.to_string();
         match addr_string.to_socket_addrs() {
-            Ok(src) => Ok(src.as_ref()[0]),
+            Ok(src) => {
+                for s in src {
+                    if s.is_ipv4() {
+                        return Ok(s)
+                    }
+                }
+                return Err(Errs::str("no ipv6 found, trans to socket failed!"))
+            },
+            Err(err) => Err(Errs::strings(format!("{} trans to socket failed!", addr_string), err))
+        }
+    }
+
+    pub(crate) fn socket_addr_ipv6(&self) -> StarryResult<SocketAddr> {
+        let addr_string = self.to_string();
+        match addr_string.to_socket_addrs() {
+            Ok(src) => {
+                for s in src {
+                    if s.is_ipv6() {
+                        return Ok(s)
+                    }
+                }
+                return Err(Errs::str("no ipv6 found, trans to socket failed!"))
+            },
             Err(err) => Err(Errs::strings(format!("{} trans to socket failed!", addr_string), err))
         }
     }
@@ -105,10 +127,10 @@ mod addr_test {
     #[test]
     fn to_socket() {
         let addr = Addr::new("localhost".to_string());
-        assert_eq!("[::1]:80", addr.socket_addr().unwrap().to_string(), "addr = {}", addr);
+        assert_eq!("[::1]:80", addr.socket_addr_ipv6().unwrap().to_string(), "addr = {}", addr);
 
         let addr = Addr::new("127.0.0.1".to_string());
-        assert_eq!("127.0.0.1:80", addr.socket_addr().unwrap().to_string(), "addr = {}", addr);
+        assert_eq!("127.0.0.1:80", addr.socket_addr_ipv4().unwrap().to_string(), "addr = {}", addr);
     }
 }
 

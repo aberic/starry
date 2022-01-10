@@ -127,8 +127,6 @@ pub struct Request {
     pub(crate) multipart_form: MultipartValues,
     pub(crate) cookies: Vec<Cookie>,
     pub(crate) client: Addr,
-    /// body数据是否已经被解析，如被解析，则无法再次解析
-    pub(crate) body_parse: bool,
 }
 
 impl Request {
@@ -154,7 +152,6 @@ impl Request {
             multipart_form: MultipartValues::new(),
             cookies: vec![],
             client: Default::default(),
-            body_parse: false,
         })
     }
 
@@ -186,8 +183,12 @@ impl Request {
         self.url.authority.addr()
     }
 
-    pub fn socket_addr(&self) -> StarryResult<SocketAddr> {
-        self.url.authority.addr.socket_addr()
+    pub fn socket_addr_ipv4(&self) -> StarryResult<SocketAddr> {
+        self.url.authority.addr.socket_addr_ipv4()
+    }
+
+    pub fn socket_addr_ipv6(&self) -> StarryResult<SocketAddr> {
+        self.url.authority.addr.socket_addr_ipv4()
     }
 
     pub fn path(&self) -> String {
@@ -247,8 +248,7 @@ impl Request {
     }
 
     pub fn body(&mut self) -> Vec<u8> {
-        self.body_parse = true;
-        self.body.body().to_vec()
+        self.body.vec()
     }
 
     /// 返回对应于URI请求参数中定义参数值的引用。
@@ -365,7 +365,6 @@ impl Default for Request {
             multipart_form: MultipartValues::new(),
             cookies: vec![],
             client: Default::default(),
-            body_parse: false,
         }
     }
 }
@@ -383,7 +382,6 @@ impl Display for Request {
 
 #[cfg(test)]
 mod request_test {
-    use crate::http::url::Location;
     use crate::{Request, Method};
 
     #[test]

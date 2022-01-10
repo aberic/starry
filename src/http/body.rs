@@ -26,12 +26,23 @@ pub(crate) struct Body {
     /// 对于客户端请求，主体长度为空意味着请求没有主体，比如GET请求。HTTP客户端的Transport负责调用Close方法。
     /// 对于服务器请求，请求体总是非空的，但当没有请求体时将立即返回EOF。服务器将关闭请求体。
     pub(crate) writer: Bytes,
+    /// body数据是否已经被解析，如被解析，则无法再次解析
+    pub(crate) is_parse: bool,
 }
 
 impl Body {
     /// 获取接收的主体信息，随着read会清空body内容
     pub(crate) fn body(&mut self) -> Bytes {
         self.reader.copy_to_bytes(self.reader.len())
+    }
+
+    pub(crate) fn vec(&mut self) -> Vec<u8> {
+        self.is_parse = true;
+        self.reader.copy_to_bytes(self.reader.len()).to_vec()
+    }
+
+    pub(crate) fn body_parse(&mut self) -> bool {
+        self.is_parse
     }
 
     /// 初始化读取器
@@ -57,7 +68,7 @@ impl Body {
 
 impl Default for Body {
     fn default() -> Self {
-        Body { init: false, reader: Default::default(), writer: Default::default() }
+        Body { init: false, reader: Default::default(), writer: Default::default(), is_parse: false }
     }
 }
 

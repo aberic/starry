@@ -149,14 +149,14 @@ impl<Stream: Read + Write + Debug> Requester<Stream> {
     }
 
     pub fn form(&mut self) -> StarryResult<Values> {
-        if !self.request.body_parse {
+        if !self.request.body.is_parse {
             self.parse_body()?;
         }
         Ok(self.request.form.clone())
     }
 
     pub fn multipart_form(&mut self) -> StarryResult<MultipartValues> {
-        if !self.request.body_parse {
+        if !self.request.body.is_parse {
             self.parse_body()?;
         }
         Ok(self.request.multipart_form.clone())
@@ -167,7 +167,7 @@ impl<Stream: Read + Write + Debug> Requester<Stream> {
         K: Borrow<K>,
         K: Hash + Eq,
         String: Borrow<K>, {
-        if !self.request.body_parse {
+        if !self.request.body.is_parse {
             self.parse_body()?;
         }
         match self.request.form.get(k) {
@@ -181,7 +181,7 @@ impl<Stream: Read + Write + Debug> Requester<Stream> {
         K: Borrow<K>,
         K: Hash + Eq,
         String: Borrow<K>, {
-        if !self.request.body_parse {
+        if !self.request.body.is_parse {
             self.parse_body()?;
         }
         match self.request.form.get(k) {
@@ -192,7 +192,7 @@ impl<Stream: Read + Write + Debug> Requester<Stream> {
 
     /// 请求表单中定义的参数数量
     pub fn count_form_value(&mut self) -> StarryResult<usize> {
-        if !self.request.body_parse {
+        if !self.request.body.is_parse {
             self.parse_body()?;
         }
         Ok(self.request.form.len())
@@ -224,7 +224,7 @@ impl<Stream: Read + Write + Debug> Requester<Stream> {
         K: Borrow<K>,
         K: Hash + Eq,
         String: Borrow<K>, {
-        if !self.request.body_parse {
+        if !self.request.body.is_parse {
             self.parse_body()?;
         }
         Ok(self.request.multipart_form.get(k))
@@ -261,7 +261,7 @@ impl<Stream: Read + Write + Debug> Requester<Stream> {
         // 解析请求行信息 POST /path/data?key=value&key2=value2 HTTP/1.1
         let (location, len) = self.parse_request_line(iter.borrow_mut())?;
         // log::trace!("parse_request_line count = {}, method = {}, version = {}", count, self.method, self.version.to_string());
-        log::trace!("size = {}, len1 = {}", size, len);
+        log::trace!("parse_request_line size = {}, len1 = {}", size, len);
         count += len;
 
         let node;
@@ -309,7 +309,7 @@ impl<Stream: Read + Write + Debug> Requester<Stream> {
     fn parse_request_line(&mut self, iter: &mut Iter<u8>) -> StarryResult<(Location, usize)> {
         // 读取数据的总长度
         let mut count = 0;
-        let mut step: u8 = 1;
+        let mut step: u8 = 1; // method -> path -> version
         let mut location: Location = Location::new();
         let mut data: Vec<u8> = vec![];
         loop {
@@ -554,8 +554,7 @@ impl<Stream: Read + Write + Debug> Requester<Stream> {
 
     /// 如果存在body，则需要根据content-type对body数据进行解析使用
     fn parse_body(&mut self) -> StarryResult<()> {
-        self.request.body_parse = true;
-        let body = self.body().to_vec();
+        let body = self.body();
         log::trace!("body len = {}", body.len());
         let content_type;
         match self.request.content_type() {

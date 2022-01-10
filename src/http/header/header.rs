@@ -95,18 +95,28 @@ impl Header {
     // }
 
     pub(crate) fn check_close(&mut self, version: &Version, remove: bool) -> bool {
+        // 如果大版本小于1，直接返回关闭
         if version.major() < 1 {
             return true;
         }
-        let header_has_close = self.contain("close");
+        let close;
+        // 检查header是否存在'close'
+        match self.get("Connection") {
+            Some(src) => match src.as_str() {
+                "close" => close = true,
+                "keep-alive" => close = false,
+                _ => close = true,
+            },
+            None => close = true
+        }
         if version.eq("HTTP/1.0") {
-            return header_has_close || !self.contain("keep-alive");
+            return close
         }
 
-        if header_has_close && remove {
+        if close && remove {
             self.del("Connection").unwrap();
         }
-        header_has_close
+        close
     }
 }
 

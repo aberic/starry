@@ -487,6 +487,18 @@ impl<'a> PartialEq<Status> for &'a str {
     }
 }
 
+impl<'a> PartialEq<String> for Status {
+    fn eq(&self, other: &String) -> bool {
+        other.eq(self.phrase())
+    }
+}
+
+impl<'a> PartialEq<Status> for String {
+    fn eq(&self, other: &Status) -> bool {
+        self.eq(other.phrase())
+    }
+}
+
 impl<'a> PartialEq<u16> for Status {
     fn eq(&self, other: &u16) -> bool {
         self.0 == *other

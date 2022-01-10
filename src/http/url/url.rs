@@ -12,10 +12,11 @@
  * limitations under the License.
  */
 
+use std::borrow::BorrowMut;
+
 use crate::http::url::{Authority, Location, Scheme};
 use crate::http::url::authority::{Addr, Userinfo};
 use crate::utils::errors::{Errs, StarryResult};
-use std::borrow::BorrowMut;
 
 /// URL表示已解析的URL。
 /// 表示的一般形式是:\[scheme]\[://]\[userinfo@]\[addr]\[/path]\[?查询]\[#片段]，参考如下：
@@ -212,11 +213,14 @@ impl URL {
                         // 跳出循环继续解析addr
                         break;
                     }
-                   b'/' => if key.is_empty() {
+                    b'/' => if key.is_empty() {
                         // 解析到"/"则只存在情况2：example.com:123/
                         // 此时如果用户名为空，则port默认80
-                        key.push_str(String::from_utf8_lossy(tmp.as_slice()).as_ref());
-                        addr = Addr::from(key.clone(), 80);
+                        if scheme.eq(&Scheme::HTTP) {
+                            addr = Addr::from(String::from_utf8_lossy(tmp.as_slice()).to_string(), 80);
+                        } else {
+                            addr = Addr::from(String::from_utf8_lossy(tmp.as_slice()).to_string(), 443);
+                        }
                         tmp.clear();
                         tmp.push(b'/');
                         // 跳出循环继续解析location
@@ -237,7 +241,19 @@ impl URL {
                     }
                     _ => tmp.push(*src)
                 },
-                None => return Err(Errs::str("url protocol parse username none failed!"))
+                None => {
+                    // 解析到头则只存在情况：example.com
+                    // 此时如果用户名为空，则port默认80
+                    if scheme.eq(&Scheme::HTTPS) {
+                        addr = Addr::from(String::from_utf8_lossy(tmp.as_slice()).to_string(), 443);
+                    } else {
+                        addr = Addr::from(String::from_utf8_lossy(tmp.as_slice()).to_string(), 80);
+                    }
+                    tmp.clear();
+                    // 跳出循环继续解析location
+                    break;
+                    // return Err(Errs::str("url protocol parse username none failed!"));
+                }
             }
         }
         match userinfo {
@@ -324,6 +340,7 @@ mod url_test {
         let u7 = "users:password@example.com:123/path/data?key=value&key2=value2#fragid1";
         let u8 = "example.com:123/path/data?key=value&key2=value2#fragid1";
         let u9 = "example.com/path/data?key=value&key2=value2#fragid1";
+        let u10 = "http://www.example.com";
 
         println!("u1 = {:#?}", URL::from(u1));
         println!("u2 = {:#?}", URL::from(u2));
@@ -334,6 +351,16 @@ mod url_test {
         println!("u7 = {:#?}", URL::from(u7));
         println!("u8 = {:#?}", URL::from(u8));
         println!("u9 = {:#?}", URL::from(u9));
+        println!("u10 = {:#?}", URL::from(u10));
+    }
+
+    #[test]
+    fn url_trans_e() {
+        let e1 = "http://www.example.com/";
+        let e2 = "http://www.example.com";
+
+        println!("e1 = {:#?}", URL::from(e1));
+        println!("e2 = {:#?}", URL::from(e2));
     }
 }
 

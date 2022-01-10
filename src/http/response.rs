@@ -12,7 +12,7 @@
  * limitations under the License.
  */
 
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use flate2::Compression;
 
 use crate::{Status, Version};
@@ -45,6 +45,7 @@ pub struct Response {
     pub(crate) version: Version,
     pub(crate) status: Status,
     pub(crate) header: Header,
+    pub(crate) cookies: Vec<Cookie>,
     pub(crate) body: Body,
     /// Close 指在响应此请求后(对于服务器)还是在发送此请求并读取其响应后(对于客户端)关闭连接。
     /// 对于服务器请求，HTTP服务器自动处理此字段，处理程序不需要此字段。
@@ -94,6 +95,14 @@ impl Response {
     fn set_this(&mut self, content_length: usize, content_type: ContentType) {
         self.header.set_content_length(content_length);
         self.header.set_content_type(content_type);
+    }
+
+    pub(crate) fn set_body(&mut self, bm: BytesMut) {
+        self.body.init_reader(bm);
+    }
+
+    pub fn body(&mut self) -> Vec<u8> {
+        self.body.vec()
     }
 
     pub fn write_type(&mut self, body: Vec<u8>, content_type: ContentType, accept_encoding: AcceptEncoding) {
@@ -228,6 +237,7 @@ impl Response {
             version,
             status: Status::OK,
             header: Header::new(),
+            cookies: vec![],
             body: Default::default(),
             close: true,
             compress,
@@ -331,6 +341,7 @@ fn fill(status: Status) -> Response {
         version: Default::default(),
         status,
         header: Header::new(),
+        cookies: vec![],
         body: Default::default(),
         close: true,
         compress: false,
@@ -343,9 +354,10 @@ impl Default for Response {
             version: Default::default(),
             status: Status::BAD_REQUEST,
             header: Header::new(),
+            cookies: vec![],
             body: Default::default(),
             close: true,
-            compress: false
+            compress: false,
         }
     }
 }

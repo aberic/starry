@@ -28,7 +28,15 @@ mod client_test {
     #[test]
     fn get1() {
         logs();
-        let resp = HttpClient::get("http://user:password@localhost:7878/path/test/test1/hello/world").unwrap();
+        let mut resp = HttpClient::get("http://user:password@localhost:7878/path/test/test1/hello/world").unwrap();
+        println!("resp = {:#?}", resp);
+        println!("body = {}", String::from_utf8_lossy(resp.body().as_slice()).to_string());
+    }
+
+    #[test]
+    fn get2() {
+        logs();
+        let resp = HttpClient::get("http://www.baidu.com").unwrap();
         println!("resp = {:#?}", resp);
     }
 }

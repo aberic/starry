@@ -151,7 +151,7 @@ impl<'a> PartialEq<Version> for &'a str {
 
 impl Default for Version {
     fn default() -> Version {
-        Version::HTTP_11
+        Version::HTTP_10
     }
 }
 
@@ -180,10 +180,10 @@ mod version_test {
 
     #[test]
     fn to_string() {
-        let v1 = Version::from_str("HTTP/1.0").unwrap();
-        assert_eq!(v1.to_string(), "HTTP/1.0");
+        let v1 = Version::from_str("HTTP/1.1").unwrap();
+        assert_eq!(v1.to_string(), "HTTP/1.1");
 
         let v2 = Version::default();
-        assert_eq!(v2.to_string(), "HTTP/1.1");
+        assert_eq!(v2.to_string(), "HTTP/1.0");
     }
 }
