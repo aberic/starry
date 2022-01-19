@@ -14,7 +14,8 @@
 * 代理（计划）
 * TLS（计划）
 ### 客户端
-* 暂无
+* HTTP
+* HTTPS（计划）
 
 ## 示例
 ### 使用HTTP Server
@@ -119,6 +120,17 @@ fn h21(mut context: Context) {
 }
 ```
 更多详情参考：https://github.com/aberic/starry/blob/master/examples/server_nor.rs
+
+### 使用HTTP Client
+```rust
+use starry::HttpClient;
+
+fn get1() {
+    let mut resp = HttpClient::get("http://user:password@localhost:7878/path/test/test1/hello/world").unwrap();
+    println!("resp = {:#?}", resp);
+}
+```
+更多详情参考：https://github.com/aberic/starry/blob/master/examples/client_nor.rs
 
 ### 文档
 暂无
